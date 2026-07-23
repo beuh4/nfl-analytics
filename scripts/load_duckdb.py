@@ -1,0 +1,38 @@
+import duckdb
+from pathlib import Path
+
+DB_PATH = Path("database/nfl.duckdb")
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+con = duckdb.connect(str(DB_PATH))
+
+print("Chargement plays...")
+con.execute("""
+    CREATE OR REPLACE TABLE plays AS
+    SELECT * FROM read_parquet('data/seasons/*.parquet')
+""")
+
+print("Chargement games...")
+con.execute("""
+    CREATE OR REPLACE TABLE games AS
+    SELECT * FROM read_parquet('data/static/games.parquet')
+""")
+
+print("Chargement players...")
+con.execute("""
+    CREATE OR REPLACE TABLE players AS
+    SELECT * FROM read_parquet('data/static/players.parquet')
+""")
+
+print("Chargement teams...")
+con.execute("""
+    CREATE OR REPLACE TABLE teams AS
+    SELECT * FROM read_parquet('data/static/teams.parquet')
+""")
+
+for table in ["plays", "games", "players", "teams"]:
+    count = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    print(f"  {table} : {count} lignes")
+
+con.close()
+print(f"Base créée : {DB_PATH}")
