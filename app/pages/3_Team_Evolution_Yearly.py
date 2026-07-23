@@ -20,17 +20,22 @@ team_names = st.multiselect(
 
 if team_names:
     colors = get_team_colors()
-    badges_html = ""
-    for name in team_names:
+    css_rules = ""
+    for i, name in enumerate(team_names, start=1):
         abbr = team_name_to_abbr[name]
         couleur = colors.get(abbr, "#1f77b4")
         texte = couleur_texte_contraste(couleur)
-        badges_html += (
-            f'<span style="background-color:{couleur}; color:{texte}; '
-            f'padding:4px 12px; border-radius:12px; margin-right:6px; '
-            f'font-weight:600; display:inline-block;">{abbr}</span>'
-        )
-    st.markdown(badges_html, unsafe_allow_html=True)
+        css_rules += f"""
+        div[data-baseweb="tag"]:nth-of-type({i}) {{
+            background-color: {couleur} !important;
+            color: {texte} !important;
+        }}
+        div[data-baseweb="tag"]:nth-of-type({i}) svg {{
+            fill: {texte} !important;
+        }}
+        """
+    st.markdown(f"<style>{css_rules}</style>", unsafe_allow_html=True)
+
 
 if not team_names:
     st.info("Sélectionne au moins une équipe.")
