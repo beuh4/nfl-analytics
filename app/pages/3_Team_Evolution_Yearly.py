@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from queries import get_all_teams, get_team_epa_by_season_multi, get_team_colors
+from queries import get_all_teams, get_team_epa_by_season_multi, get_team_colors, couleur_texte_contraste
 
 st.set_page_config(page_title="Évolution EPA - Saison par saison", layout="wide")
 st.title("Évolution EPA par équipe — saison par saison")
@@ -17,6 +17,20 @@ team_names = st.multiselect(
     teams_df["team_name"],
     default=[teams_df["team_name"].iloc[0]],
 )
+
+if team_names:
+    colors = get_team_colors()
+    badges_html = ""
+    for name in team_names:
+        abbr = team_name_to_abbr[name]
+        couleur = colors.get(abbr, "#1f77b4")
+        texte = couleur_texte_contraste(couleur)
+        badges_html += (
+            f'<span style="background-color:{couleur}; color:{texte}; '
+            f'padding:4px 12px; border-radius:12px; margin-right:6px; '
+            f'font-weight:600; display:inline-block;">{abbr}</span>'
+        )
+    st.markdown(badges_html, unsafe_allow_html=True)
 
 if not team_names:
     st.info("Sélectionne au moins une équipe.")

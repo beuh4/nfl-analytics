@@ -115,3 +115,9 @@ def get_team_colors():
     df = con.execute("SELECT team_abbr, team_color FROM teams").fetchdf()
     con.close()
     return dict(zip(df["team_abbr"], df["team_color"]))
+
+def couleur_texte_contraste(hex_color: str) -> str:
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return "#000000" if luminance > 0.6 else "#ffffff"
