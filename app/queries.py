@@ -127,6 +127,13 @@ def get_team_colors():
     return dict(zip(df["team_abbr"], df["team_color"]))
 
 
+def get_team_logos():
+    con = get_connection()
+    df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
+    con.close()
+    return dict(zip(df["team_abbr"], df["team_logo_espn"]))
+
+
 def couleur_texte_contraste(hex_color: str) -> str:
     """Calcule si un texte noir ou blanc est plus lisible sur un fond hexadécimal donné.
     Formule de luminance perçue ITU-R BT.601 : au-dessus de 0.6, le fond est
@@ -371,6 +378,14 @@ TRADUCTIONS_COLONNES = {
 
 def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
                      show_team_logos=True, player_col=None):
+    """Applique couleur de ligne (par équipe), contraste de texte, arrondi
+    des décimales, logo d'équipe, traduction des colonnes, et style des en-têtes.
+
+    couleur_unique : à utiliser quand le tableau ne concerne qu'une seule
+    équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
+    player_col : nom de la colonne joueur, si une colonne "photo_url" est
+    présente dans df, pour combiner photo + nom dans la même cellule.
+    """
     df = df.reset_index(drop=True).copy()
 
     if couleur_unique is not None:
@@ -397,13 +412,18 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
     # Injection du logo dans la cellule "team", après le calcul des couleurs
     # (qui repose sur l'abréviation brute), avant le renommage de colonnes.
+    # white-space:nowrap empêche le logo et le texte de se séparer sur deux lignes.
     if show_team_logos and team_col in affichage.columns:
         logos = get_team_logos()
 
         def _cell_avec_logo(abbr):
             url = logos.get(abbr)
             if url:
-                return f'<img src="{url}" height="20" style="vertical-align:middle;margin-right:6px;">{abbr}'
+                return (
+                    f'<span style="white-space:nowrap;">'
+                    f'<img src="{url}" height="20" style="vertical-align:middle;margin-right:6px;">{abbr}'
+                    f'</span>'
+                )
             return abbr
 
         affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
@@ -415,7 +435,11 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
             url = row["photo_url"]
             nom = row[player_col]
             if isinstance(url, str) and url:
-                return f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
+                return (
+                    f'<span style="white-space:nowrap;">'
+                    f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
+                    f'</span>'
+                )
             return nom
 
         affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
@@ -449,11 +473,7 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .set_table_styles(header_styles)
         .hide(axis="index")
     )
-def get_team_logos():
-    con = get_connection()
-    df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
-    con.close()
-    return dict(zip(df["team_abbr"], df["team_logo_espn"]))
+
 
 def render_table(styled_df):
     """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
