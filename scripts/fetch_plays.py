@@ -1,7 +1,7 @@
 import nfl_data_py as nfl
 from pathlib import Path
 
-SEASONS = list(range(2021, 2026))  # 2021 à 2025  
+SEASONS = list(range(2015, 2026))  # 2015 à 2026  
 
 COLONNES_PLAYS = [
     "play_id", "game_id", "season", "week", "season_type",

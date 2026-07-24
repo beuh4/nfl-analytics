@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from queries import get_all_teams, get_team_epa_by_week, get_seasons_for_team, get_team_colors
+from queries import get_all_teams, get_team_epa_by_week, get_seasons_for_team, get_team_colors, couleur_texte_contraste
 
 st.set_page_config(page_title="Évolution EPA - Semaine par semaine", layout="wide")
 st.title("Évolution EPA par équipe — semaine par semaine")
