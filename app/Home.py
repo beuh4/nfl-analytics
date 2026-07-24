@@ -2,6 +2,15 @@ import streamlit as st
 
 st.set_page_config(page_title="NFL Analytics", layout="wide", page_icon="🏈")
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
+html, body, [class*="css"] {
+    font-family: 'Manrope', sans-serif;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("NFL Analytics")
 st.write("Explore les statistiques NFL saison par saison, semaine par semaine.")
 
