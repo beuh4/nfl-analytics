@@ -9,25 +9,25 @@ con = duckdb.connect(str(DB_PATH))
 print("Chargement plays...")
 con.execute("""
     CREATE OR REPLACE TABLE plays AS
-    SELECT * FROM read_parquet('data/seasons/*.parquet')
+    SELECT * FROM read_parquet('data/seasons/*.parquet', union_by_name=true)
 """)
 
 print("Chargement games...")
 con.execute("""
     CREATE OR REPLACE TABLE games AS
-    SELECT * FROM read_parquet('data/static/games.parquet')
+    SELECT * FROM read_parquet('data/static/games.parquet', union_by_name=true)
 """)
 
 print("Chargement players...")
 con.execute("""
     CREATE OR REPLACE TABLE players AS
-    SELECT * FROM read_parquet('data/static/players.parquet')
+    SELECT * FROM read_parquet('data/static/players.parquet', union_by_name=true)
 """)
 
 print("Chargement teams...")
 con.execute("""
     CREATE OR REPLACE TABLE teams AS
-    SELECT * FROM read_parquet('data/static/teams.parquet')
+    SELECT * FROM read_parquet('data/static/teams.parquet', union_by_name=true)
 """)
 
 for table in ["plays", "games", "players", "teams"]:
