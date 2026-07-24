@@ -6,7 +6,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_all_teams, get_team_epa_by_week, get_seasons_for_team, get_team_colors, style_dataframe, render_table
 
-
 st.set_page_config(page_title="Évolution EPA - Semaine par semaine", layout="wide")
 st.title("Évolution EPA par équipe — semaine par semaine")
 
@@ -32,6 +31,7 @@ fig.add_trace(go.Scatter(
     name="EPA Offense", line=dict(color=couleur_equipe, width=3),
 ))
 fig.add_trace(go.Scatter(
+    # Défense en pointillés : même couleur d'équipe, distinguée par le style de trait.
     x=df["week"], y=df["epa_defense"], mode="lines+markers",
     name="EPA Defense", line=dict(color=couleur_equipe, width=2, dash="dot"),
 ))
@@ -40,5 +40,4 @@ fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=600)
 fig.update_xaxes(dtick=1)
 
 st.plotly_chart(fig, use_container_width=True)
-couleur_equipe = colors.get(team_abbr, "#1f77b4")
 render_table(style_dataframe(df, couleur_unique=couleur_equipe))

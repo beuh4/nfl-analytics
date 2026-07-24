@@ -9,9 +9,6 @@ from queries import get_team_epa_offense_defense, get_available_seasons, style_d
 st.set_page_config(page_title="Team Offense vs Defense", layout="wide")
 st.title("EPA Offense vs EPA Defense par équipe")
 
-
-
-
 seasons = get_available_seasons()
 season = st.selectbox("Saison", seasons, index=len(seasons) - 1)
 
@@ -27,6 +24,7 @@ fig = px.scatter(
 
 fig.update_traces(
     textposition="top center",
+    # Couleur de chaque point alignée sur la couleur réelle de l'équipe.
     marker=dict(size=14, color=df["team_color"], line=dict(width=1, color="black")),
 )
 fig.update_yaxes(autorange="reversed")  # EPA défensif négatif = bonne défense, donc en haut
@@ -40,5 +38,4 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-styled_df = df.style.apply(colorer_ligne, axis=1)
 render_table(style_dataframe(df))

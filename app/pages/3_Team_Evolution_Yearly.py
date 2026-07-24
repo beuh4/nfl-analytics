@@ -6,7 +6,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_all_teams, get_team_epa_by_season_multi, get_team_colors, couleur_texte_contraste, style_dataframe, render_table
 
-
 st.set_page_config(page_title="Évolution EPA - Saison par saison", layout="wide")
 st.title("Évolution EPA par équipe — saison par saison")
 
@@ -19,8 +18,12 @@ team_names = st.multiselect(
     default=[teams_df["team_name"].iloc[0]],
 )
 
+colors = get_team_colors()
+
 if team_names:
-    colors = get_team_colors()
+    # Injection de CSS ciblant les tags générés par st.multiselect,
+    # dans l'ordre de sélection, pour remplacer la couleur d'accent
+    # par défaut par la couleur réelle de chaque équipe.
     css_rules = ""
     for i, name in enumerate(team_names, start=1):
         abbr = team_name_to_abbr[name]
@@ -36,9 +39,7 @@ if team_names:
         }}
         """
     st.markdown(f"<style>{css_rules}</style>", unsafe_allow_html=True)
-
-
-if not team_names:
+else:
     st.info("Sélectionne au moins une équipe.")
     st.stop()
 
@@ -48,8 +49,6 @@ metric = st.radio("Métrique", ["epa_offense", "epa_defense"], horizontal=True)
 
 df = get_team_epa_by_season_multi(team_abbrs)
 
-colors = get_team_colors()
-
 fig = go.Figure()
 for team in team_abbrs:
     df_team = df[df["team"] == team]
@@ -58,7 +57,6 @@ for team in team_abbrs:
         mode="lines+markers", name=team,
         line=dict(color=colors.get(team, "#1f77b4"), width=3),
     ))
-
 
 fig.add_hline(y=0, line_dash="dash", line_color="gray")
 fig.update_layout(xaxis_title="Saison", yaxis_title="EPA par play", height=600)

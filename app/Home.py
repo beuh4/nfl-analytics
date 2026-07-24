@@ -7,7 +7,8 @@ st.write("Explore les statistiques NFL saison par saison, semaine par semaine.")
 
 st.divider()
 
-col1, col2, col3 = st.columns(3)
+# Une carte par page, avec lien de navigation direct (st.page_link).
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     with st.container(border=True):
@@ -26,3 +27,9 @@ with col3:
         st.subheader("Évolution saison par saison")
         st.write("Compare plusieurs équipes sur plusieurs années, sur l'axe offensif ou défensif.")
         st.page_link("pages/3_Team_Evolution_Yearly.py", label="Ouvrir", icon="➡️")
+
+with col4:
+    with st.container(border=True):
+        st.subheader("Synthèse hebdomadaire")
+        st.write("Top performers, équipes qui sortent du lot, turnovers et pressions de la semaine.")
+        st.page_link("pages/4_Weekly_Recap.py", label="Ouvrir", icon="➡️")

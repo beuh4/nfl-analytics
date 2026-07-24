@@ -2,10 +2,14 @@ import duckdb
 import streamlit as st
 from pathlib import Path
 
+# Chemin vers la base DuckDB, relatif à ce fichier pour fonctionner
+# quel que soit le répertoire depuis lequel Streamlit est lancé.
 DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
 
 
 def get_connection():
+    # read_only=True évite un conflit de verrou si un job d'ingestion
+    # écrit sur le fichier pendant qu'un utilisateur consulte l'app.
     return duckdb.connect(str(DB_PATH), read_only=True)
 
 
@@ -17,6 +21,7 @@ def get_available_seasons():
 
 
 def get_team_epa_offense_defense(season: int):
+    """EPA offensif et défensif par équipe pour une saison donnée."""
     con = get_connection()
     query = """
         WITH offense AS (
@@ -48,6 +53,7 @@ def get_team_epa_offense_defense(season: int):
     con.close()
     return df
 
+
 def get_all_teams():
     con = get_connection()
     df = con.execute("SELECT team_abbr, team_name FROM teams ORDER BY team_name").fetchdf()
@@ -56,6 +62,7 @@ def get_all_teams():
 
 
 def get_team_epa_by_week(team: str, season: int):
+    """EPA offensif/défensif semaine par semaine pour une équipe et une saison."""
     con = get_connection()
     query = """
         SELECT
@@ -74,8 +81,8 @@ def get_team_epa_by_week(team: str, season: int):
     return df
 
 
-
 def get_team_epa_by_season_multi(teams: list[str]):
+    """EPA offensif/défensif saison par saison, pour plusieurs équipes en parallèle."""
     con = get_connection()
     placeholders = ", ".join(["?"] * len(teams))
     query = f"""
@@ -100,6 +107,7 @@ def get_team_epa_by_season_multi(teams: list[str]):
     con.close()
     return df
 
+
 def get_seasons_for_team(team: str):
     con = get_connection()
     query = """
@@ -111,17 +119,23 @@ def get_seasons_for_team(team: str):
     con.close()
     return df["season"].tolist()
 
+
 def get_team_colors():
     con = get_connection()
     df = con.execute("SELECT team_abbr, team_color FROM teams").fetchdf()
     con.close()
     return dict(zip(df["team_abbr"], df["team_color"]))
 
+
 def couleur_texte_contraste(hex_color: str) -> str:
+    """Calcule si un texte noir ou blanc est plus lisible sur un fond hexadécimal donné.
+    Formule de luminance perçue ITU-R BT.601 : au-dessus de 0.6, le fond est
+    jugé clair (texte noir), en dessous, sombre (texte blanc)."""
     hex_color = hex_color.lstrip("#")
     r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
     luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
     return "#000000" if luminance > 0.6 else "#ffffff"
+
 
 def get_weeks_for_season(season: int):
     con = get_connection()
@@ -214,6 +228,8 @@ def get_best_defense_week(season: int, week: int):
 
 
 def get_biggest_surprises_week(season: int, week: int):
+    """Compare l'EPA de la semaine à la moyenne du reste de la saison,
+    pour repérer les équipes qui sortent nettement du lot (en bien ou en mal)."""
     con = get_connection()
     query = """
         WITH season_avg AS (
@@ -242,6 +258,8 @@ def get_biggest_surprises_week(season: int, week: int):
 
 
 def get_explosive_plays_week(season: int, week: int):
+    """Seuils : 20+ yards en passe, 10+ yards en course — standard NFL
+    pour qualifier un jeu d'explosif."""
     con = get_connection()
     team_query = """
         SELECT posteam AS team, COUNT(*) AS explosive_plays
@@ -298,11 +316,14 @@ def get_turnover_battle_week(season: int, week: int):
 
 def get_pressure_leaders_week(season: int, week: int):
     con = get_connection()
+    # CAST(... AS DOUBLE) plutôt que CASE WHEN was_pressure THEN :
+    # la colonne peut être stockée en DOUBLE (0.0/1.0/NaN) après passage
+    # par parquet, pas en booléen strict — DuckDB refuse sinon la comparaison.
     query = """
         SELECT defteam AS team,
-               SUM(CASE WHEN was_pressure THEN 1 ELSE 0 END) AS pressures,
+               SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressures,
                COUNT(*) AS pass_plays,
-               ROUND(SUM(CASE WHEN was_pressure THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 3) AS taux_pression
+               ROUND(SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0 / COUNT(*), 3) AS taux_pression
         FROM plays
         WHERE season = ? AND week = ? AND pass = 1 AND defteam IS NOT NULL
         GROUP BY defteam
@@ -313,6 +334,9 @@ def get_pressure_leaders_week(season: int, week: int):
     con.close()
     return df
 
+
+# Traduction des noms de colonnes techniques vers un affichage lisible en français.
+# EPA reste tel quel (acronyme reconnu, pas de traduction naturelle utile).
 TRADUCTIONS_COLONNES = {
     "team": "Équipe",
     "team_name": "Nom",
@@ -346,6 +370,12 @@ TRADUCTIONS_COLONNES = {
 
 
 def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
+    """Applique couleur de ligne (par équipe), contraste de texte, arrondi
+    des décimales, traduction des colonnes, et style des en-têtes.
+
+    couleur_unique : à utiliser quand le tableau ne concerne qu'une seule
+    équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
+    """
     df = df.reset_index(drop=True).copy()
 
     if couleur_unique is not None:
@@ -401,5 +431,9 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
 
 
 def render_table(styled_df):
+    """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
+    ignore le style des en-têtes (set_table_styles) d'un Styler — il ne
+    respecte que les couleurs cellule par cellule. Contrepartie : pas de
+    tri interactif au clic sur une colonne."""
     html = styled_df.to_html()
     st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
