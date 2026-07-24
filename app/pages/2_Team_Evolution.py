@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from queries import get_all_teams, get_team_epa_by_week, get_seasons_for_team, get_team_colors, couleur_texte_contraste
+from queries import get_all_teams, get_team_epa_by_week, get_seasons_for_team, get_team_colors, style_dataframe
 
 st.set_page_config(page_title="Évolution EPA - Semaine par semaine", layout="wide")
 st.title("Évolution EPA par équipe — semaine par semaine")
@@ -39,4 +39,5 @@ fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=600)
 fig.update_xaxes(dtick=1)
 
 st.plotly_chart(fig, use_container_width=True)
-st.dataframe(df, use_container_width=True, hide_index=True)
+couleur_equipe = colors.get(team_abbr, "#1f77b4")
+st.dataframe(style_dataframe(df, couleur_unique=couleur_equipe), use_container_width=True, hide_index=True)

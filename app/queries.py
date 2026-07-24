@@ -311,3 +311,80 @@ def get_pressure_leaders_week(season: int, week: int):
     df = con.execute(query, [season, week]).fetchdf()
     con.close()
     return df
+
+TRADUCTIONS_COLONNES = {
+    "team": "Équipe",
+    "team_name": "Nom",
+    "epa_offense": "EPA Offense",
+    "epa_defense": "EPA Défense",
+    "epa_allowed": "EPA Concédé",
+    "epa_per_play": "EPA/Play",
+    "plays_offense": "Plays Off.",
+    "plays_defense": "Plays Déf.",
+    "week": "Semaine",
+    "season": "Saison",
+    "player": "Joueur",
+    "dropbacks": "Dropbacks",
+    "carries": "Courses",
+    "targets": "Cibles",
+    "plays": "Plays",
+    "moyenne_saison": "Moyenne Saison",
+    "cette_semaine": "Cette Semaine",
+    "ecart": "Écart",
+    "explosive_plays": "Plays Explosifs",
+    "play_type": "Type de Jeu",
+    "yards_gained": "Yards",
+    "epa": "EPA",
+    "takeaways": "Prises",
+    "giveaways": "Pertes",
+    "differentiel": "Différentiel",
+    "pressures": "Pressions",
+    "pass_plays": "Plays Passe",
+    "taux_pression": "Taux Pression",
+}
+
+
+def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
+    df = df.reset_index(drop=True).copy()
+
+    if couleur_unique is not None:
+        fonds = [couleur_unique] * len(df)
+        affichage = df.copy()
+    elif "team_color" in df.columns:
+        fonds = df["team_color"].tolist()
+        affichage = df.drop(columns=["team_color"])
+    elif team_col in df.columns:
+        colors = get_team_colors()
+        fonds = [colors.get(t, "#1f77b4") for t in df[team_col]]
+        affichage = df.copy()
+    else:
+        fonds = ["#f0f0f0"] * len(df)
+        affichage = df.copy()
+
+    textes = [couleur_texte_contraste(c) for c in fonds]
+
+    def colorer_ligne(row):
+        i = row.name
+        return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
+
+    numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
+
+    affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
+    format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
+
+    header_styles = [
+        {"selector": "th", "props": [
+            ("background-color", "#111827"),
+            ("color", "white"),
+            ("font-weight", "600"),
+            ("text-align", "left"),
+            ("padding", "8px 12px"),
+        ]},
+    ]
+
+    return (
+        affichage.style
+        .apply(colorer_ligne, axis=1)
+        .format(format_dict)
+        .set_table_styles(header_styles)
+    )

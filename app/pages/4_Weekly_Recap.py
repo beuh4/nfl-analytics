@@ -14,17 +14,12 @@ st.set_page_config(page_title="Synthèse hebdomadaire", layout="wide")
 st.title("Synthèse hebdomadaire")
 
 
-def style_by_team(df, team_col="team"):
-    colors = get_team_colors()
-    fonds = [colors.get(t, "#1f77b4") for t in df[team_col]]
-    textes = [couleur_texte_contraste(c) for c in fonds]
-
-    def colorer_ligne(row):
-        i = df.index.get_loc(row.name)
-        return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
-
-    return df.style.apply(colorer_ligne, axis=1)
-
+from queries import (
+    get_available_seasons, get_weeks_for_season, get_team_colors, couleur_texte_contraste, style_dataframe,
+    get_top_qb_week, get_top_rb_week, get_top_wr_week,
+    get_best_offense_week, get_best_defense_week, get_biggest_surprises_week,
+    get_explosive_plays_week, get_turnover_battle_week, get_pressure_leaders_week,
+)
 
 seasons = get_available_seasons()
 season = st.selectbox("Saison", seasons, index=len(seasons) - 1)
@@ -39,17 +34,17 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.subheader("Top 3 QB — EPA/dropback")
     df = get_top_qb_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 with col2:
     st.subheader("Top 3 RB — EPA/course")
     df = get_top_rb_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 with col3:
     st.subheader("Top 3 Receveurs — EPA/cible")
     df = get_top_wr_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 st.divider()
 
@@ -58,12 +53,12 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Meilleure attaque de la semaine")
     df = get_best_offense_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 with col2:
     st.subheader("Meilleure défense de la semaine")
     df = get_best_defense_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 st.divider()
 
@@ -72,10 +67,10 @@ df = get_biggest_surprises_week(season, week)
 col1, col2 = st.columns(2)
 with col1:
     st.write("Plus forte surperformance")
-    st.dataframe(style_by_team(df.head(3)), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df.head(3)), use_container_width=True, hide_index=True)
 with col2:
     st.write("Plus forte contre-performance")
-    st.dataframe(style_by_team(df.tail(3)), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df.tail(3)), use_container_width=True, hide_index=True)
 
 st.divider()
 
@@ -84,10 +79,10 @@ top_teams, top_plays = get_explosive_plays_week(season, week)
 col1, col2 = st.columns(2)
 with col1:
     st.write("Équipes — nombre de plays explosifs")
-    st.dataframe(style_by_team(top_teams), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(top_teams), use_container_width=True, hide_index=True)
 with col2:
     st.write("Top 5 plays de la semaine")
-    st.dataframe(style_by_team(top_plays), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(top_plays), use_container_width=True, hide_index=True)
 
 st.divider()
 
@@ -96,11 +91,11 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Bataille des turnovers")
     df = get_turnover_battle_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
 
 with col2:
     st.subheader("Pressions générées")
     if season < 2023:
         st.caption("Donnée de pression partiellement disponible avant 2023 — à interpréter avec prudence.")
     df = get_pressure_leaders_week(season, week)
-    st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
+    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
