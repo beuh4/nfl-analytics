@@ -121,3 +121,193 @@ def couleur_texte_contraste(hex_color: str) -> str:
     r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
     luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
     return "#000000" if luminance > 0.6 else "#ffffff"
+
+def get_weeks_for_season(season: int):
+    con = get_connection()
+    df = con.execute(
+        "SELECT DISTINCT week FROM plays WHERE season = ? ORDER BY week", [season]
+    ).fetchdf()
+    con.close()
+    return df["week"].tolist()
+
+
+def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
+    con = get_connection()
+    query = """
+        SELECT passer_player_name AS player, posteam AS team,
+               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS dropbacks
+        FROM plays
+        WHERE season = ? AND week = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+        GROUP BY passer_player_name, posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_rb_week(season: int, week: int, min_carries: int = 5):
+    con = get_connection()
+    query = """
+        SELECT rusher_player_name AS player, posteam AS team,
+               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS carries
+        FROM plays
+        WHERE season = ? AND week = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+        GROUP BY rusher_player_name, posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_wr_week(season: int, week: int, min_targets: int = 3):
+    con = get_connection()
+    query = """
+        SELECT receiver_player_name AS player, posteam AS team,
+               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS targets
+        FROM plays
+        WHERE season = ? AND week = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+        GROUP BY receiver_player_name, posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+def get_best_offense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY epa_offense DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+
+def get_best_defense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+        GROUP BY defteam
+        ORDER BY epa_allowed ASC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+
+def get_biggest_surprises_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH season_avg AS (
+            SELECT posteam AS team, AVG(epa) AS avg_season
+            FROM plays
+            WHERE season = ? AND week != ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        week_epa AS (
+            SELECT posteam AS team, AVG(epa) AS avg_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        )
+        SELECT w.team,
+               ROUND(s.avg_season, 3) AS moyenne_saison,
+               ROUND(w.avg_week, 3) AS cette_semaine,
+               ROUND(w.avg_week - s.avg_season, 3) AS ecart
+        FROM week_epa w
+        JOIN season_avg s ON w.team = s.team
+        ORDER BY ecart DESC
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+
+def get_explosive_plays_week(season: int, week: int):
+    con = get_connection()
+    team_query = """
+        SELECT posteam AS team, COUNT(*) AS explosive_plays
+        FROM plays
+        WHERE season = ? AND week = ?
+          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
+        GROUP BY posteam
+        ORDER BY explosive_plays DESC
+        LIMIT 5
+    """
+    top_teams = con.execute(team_query, [season, week]).fetchdf()
+
+    plays_query = """
+        SELECT COALESCE(passer_player_name, rusher_player_name) AS player,
+               posteam AS team, play_type, yards_gained, ROUND(epa, 3) AS epa
+        FROM plays
+        WHERE season = ? AND week = ?
+          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
+        ORDER BY yards_gained DESC
+        LIMIT 5
+    """
+    top_plays = con.execute(plays_query, [season, week]).fetchdf()
+    con.close()
+    return top_teams, top_plays
+
+
+def get_turnover_battle_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH giveaways AS (
+            SELECT posteam AS team, COUNT(*) AS giveaways
+            FROM plays
+            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
+            GROUP BY posteam
+        ),
+        takeaways AS (
+            SELECT defteam AS team, COUNT(*) AS takeaways
+            FROM plays
+            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
+            GROUP BY defteam
+        )
+        SELECT COALESCE(g.team, t.team) AS team,
+               COALESCE(t.takeaways, 0) AS takeaways,
+               COALESCE(g.giveaways, 0) AS giveaways,
+               COALESCE(t.takeaways, 0) - COALESCE(g.giveaways, 0) AS differentiel
+        FROM giveaways g
+        FULL OUTER JOIN takeaways t ON g.team = t.team
+        ORDER BY differentiel DESC
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+
+def get_pressure_leaders_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT defteam AS team,
+               SUM(CASE WHEN was_pressure THEN 1 ELSE 0 END) AS pressures,
+               COUNT(*) AS pass_plays,
+               ROUND(SUM(CASE WHEN was_pressure THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 3) AS taux_pression
+        FROM plays
+        WHERE season = ? AND week = ? AND pass = 1 AND defteam IS NOT NULL
+        GROUP BY defteam
+        ORDER BY pressures DESC
+        LIMIT 5
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
