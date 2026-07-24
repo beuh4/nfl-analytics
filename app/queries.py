@@ -543,9 +543,9 @@ def render_podium(df, metric_col, decimals=3):
                         display:flex;align-items:center;justify-content:center;color:#1F2937;
                         font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
             {avatar}
-            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#F1F5F9;">{nom}</div>
-            <div style="font-size:12px;color:#94A3B8;">{logo_html}{team}</div>
-            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#F1F5F9;">{valeur:.{decimals}f}</div>
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>
+            <div style="font-size:12px;color:#64748B;">{logo_html}{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
                         border-radius:8px 8px 0 0;margin-top:10px;"></div>
