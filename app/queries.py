@@ -369,13 +369,8 @@ TRADUCTIONS_COLONNES = {
 }
 
 
-def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
-    """Applique couleur de ligne (par équipe), contraste de texte, arrondi
-    des décimales, traduction des colonnes, et style des en-têtes.
-
-    couleur_unique : à utiliser quand le tableau ne concerne qu'une seule
-    équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
-    """
+def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
+                     show_team_logos=True, player_col=None):
     df = df.reset_index(drop=True).copy()
 
     if couleur_unique is not None:
@@ -399,6 +394,32 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
         return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
 
     numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
+
+    # Injection du logo dans la cellule "team", après le calcul des couleurs
+    # (qui repose sur l'abréviation brute), avant le renommage de colonnes.
+    if show_team_logos and team_col in affichage.columns:
+        logos = get_team_logos()
+
+        def _cell_avec_logo(abbr):
+            url = logos.get(abbr)
+            if url:
+                return f'<img src="{url}" height="20" style="vertical-align:middle;margin-right:6px;">{abbr}'
+            return abbr
+
+        affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
+
+    # Injection optionnelle d'une photo joueur, si une colonne "photo_url"
+    # a été fournie dans le dataframe (ajoutée en amont par la requête SQL).
+    if player_col and player_col in affichage.columns and "photo_url" in affichage.columns:
+        def _cell_avec_photo(row):
+            url = row["photo_url"]
+            nom = row[player_col]
+            if isinstance(url, str) and url:
+                return f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
+            return nom
+
+        affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
+        affichage = affichage.drop(columns=["photo_url"])
 
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
     format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
@@ -428,7 +449,11 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
         .set_table_styles(header_styles)
         .hide(axis="index")
     )
-
+def get_team_logos():
+    con = get_connection()
+    df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
+    con.close()
+    return dict(zip(df["team_abbr"], df["team_logo_espn"]))
 
 def render_table(styled_df):
     """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
