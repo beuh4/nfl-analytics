@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import (
     get_available_seasons, get_weeks_for_season, get_team_colors, couleur_texte_contraste,
-    get_top_qb_week, get_top_rb_week, get_top_wr_week,
+    get_top_qb_week, get_top_rb_week, get_top_wr_week, render_table
     get_best_offense_week, get_best_defense_week, get_biggest_surprises_week,
     get_explosive_plays_week, get_turnover_battle_week, get_pressure_leaders_week,
 )

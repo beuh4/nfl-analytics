@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from queries import get_team_epa_offense_defense, get_available_seasons, style_dataframe
+from queries import get_team_epa_offense_defense, get_available_seasons, style_dataframe, render_table
 
 st.set_page_config(page_title="Team Offense vs Defense", layout="wide")
 st.title("EPA Offense vs EPA Defense par équipe")

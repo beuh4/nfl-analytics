@@ -373,11 +373,7 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
     format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
 
-def render_table(styled_df):
-    html = styled_df.to_html()
-    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
-
-header_styles = [
+    header_styles = [
         {"selector": "th", "props": [
             ("background-color", "#111827"),
             ("color", "white"),
@@ -402,3 +398,8 @@ header_styles = [
         .set_table_styles(header_styles)
         .hide(axis="index")
     )
+
+
+def render_table(styled_df):
+    html = styled_df.to_html()
+    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
