@@ -1,5 +1,6 @@
 import duckdb
 import streamlit as st
+import streamlit.components.v1 as components
 from pathlib import Path
 
 # Chemin vers la base DuckDB, relatif à ce fichier pour fonctionner
@@ -532,7 +533,7 @@ def render_podium(df, metric_col, decimals=3):
         """
 
     html = f'<div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">{blocs}</div>'
-    st.markdown(html, unsafe_allow_html=True)
+    components.html(html, height=320, scrolling=False)
 
 def render_table(styled_df):
     """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
