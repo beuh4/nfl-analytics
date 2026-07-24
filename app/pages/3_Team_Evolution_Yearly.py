@@ -7,6 +7,14 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_all_teams, get_team_epa_by_season_multi, get_team_colors, couleur_texte_contraste, style_dataframe, render_table
 
 st.set_page_config(page_title="Évolution EPA - Saison par saison", layout="wide")
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
+html, body, [class*="css"] {
+    font-family: 'Manrope', sans-serif;
+}
+</style>
+""", unsafe_allow_html=True)
 st.title("Évolution EPA par équipe — saison par saison")
 
 teams_df = get_all_teams()

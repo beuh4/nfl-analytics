@@ -7,6 +7,14 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_team_epa_offense_defense, get_available_seasons, style_dataframe, render_table
 
 st.set_page_config(page_title="Team Offense vs Defense", layout="wide")
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
+html, body, [class*="css"] {
+    font-family: 'Manrope', sans-serif;
+}
+</style>
+""", unsafe_allow_html=True)
 st.title("EPA Offense vs EPA Defense par équipe")
 
 seasons = get_available_seasons()

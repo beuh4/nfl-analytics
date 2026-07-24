@@ -484,7 +484,13 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 def render_podium(df, metric_col, decimals=3):
     """Podium HTML pour un top 3 : 1er au centre (plus haut), 2e à gauche,
     3e à droite. Utilise photo_url si présente dans df, sinon un avatar
-    avec les initiales du joueur, coloré aux couleurs de l'équipe."""
+    avec les initiales du joueur, coloré aux couleurs de l'équipe.
+
+    Rendu via components.html (iframe isolé) pour éviter le scintillement
+    du diffing React de st.markdown sur du HTML complexe. L'iframe n'hérite
+    d'aucun style de la page parente : police et fond sont donc définis
+    explicitement ci-dessous.
+    """
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
@@ -492,7 +498,9 @@ def render_podium(df, metric_col, decimals=3):
     colors = get_team_colors()
     logos = get_team_logos()
 
-    medailles = ["🥇", "🥈", "🥉"]
+    # Couleurs de badge de rang (or/argent/bronze) plutôt que des emojis
+    # médaille, peu fiables d'un navigateur/OS à l'autre.
+    couleurs_rang = ["#FBBF24", "#CBD5E1", "#D97706"]
     hauteurs = [130, 100, 80]
     ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
 
@@ -512,14 +520,16 @@ def render_podium(df, metric_col, decimals=3):
         if isinstance(photo_url, str) and photo_url:
             avatar = (
                 f'<img src="{photo_url}" style="width:70px;height:70px;'
-                f'border-radius:50%;object-fit:cover;border:3px solid {couleur_equipe};">'
+                f'border-radius:50%;object-fit:cover;border:3px solid {couleur_equipe};'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
             )
         else:
             initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
             avatar = (
                 f'<div style="width:70px;height:70px;border-radius:50%;background:{couleur_equipe};'
                 f'display:flex;align-items:center;justify-content:center;color:white;'
-                f'font-weight:700;font-size:22px;border:3px solid {couleur_equipe};">{initiales}</div>'
+                f'font-weight:700;font-size:22px;border:3px solid {couleur_equipe};'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">{initiales}</div>'
             )
 
         logo_html = (
@@ -529,16 +539,39 @@ def render_podium(df, metric_col, decimals=3):
 
         blocs += f"""
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
-            <div style="font-size:24px;margin-bottom:4px;">{medailles[rang-1]}</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
+                        display:flex;align-items:center;justify-content:center;color:#1F2937;
+                        font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
             {avatar}
-            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;">{nom}</div>
-            <div style="font-size:12px;color:#6b7280;">{logo_html}{team}</div>
-            <div style="margin-top:6px;font-weight:700;font-size:16px;">{valeur:.{decimals}f}</div>
-            <div style="width:100%;height:{hauteurs[rang-1]}px;background:{couleur_equipe};border-radius:8px 8px 0 0;margin-top:10px;"></div>
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#F1F5F9;">{nom}</div>
+            <div style="font-size:12px;color:#94A3B8;">{logo_html}{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#F1F5F9;">{valeur:.{decimals}f}</div>
+            <div style="width:100%;height:{hauteurs[rang-1]}px;
+                        background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
+                        border-radius:8px 8px 0 0;margin-top:10px;"></div>
         </div>
         """
 
-    html = f'<div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">{blocs}</div>'
+    html = f"""
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+            html, body {{
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                font-family: 'Manrope', 'Segoe UI', sans-serif;
+            }}
+        </style>
+    </head>
+    <body>
+        <div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">
+            {blocs}
+        </div>
+    </body>
+    </html>
+    """
     components.html(html, height=320, scrolling=False)
 
 def render_table(styled_df):
