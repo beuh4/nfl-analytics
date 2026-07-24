@@ -41,4 +41,4 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 styled_df = df.style.apply(colorer_ligne, axis=1)
-st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+render_table(style_dataframe(df))

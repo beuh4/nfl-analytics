@@ -1,4 +1,5 @@
 import duckdb
+import streamlit as st
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
@@ -319,8 +320,8 @@ TRADUCTIONS_COLONNES = {
     "epa_defense": "EPA Défense",
     "epa_allowed": "EPA Concédé",
     "epa_per_play": "EPA/Play",
-    "plays_offense": "Plays Off.",
-    "plays_defense": "Plays Déf.",
+    "plays_offense": "Jeux Off.",
+    "plays_defense": "Jeux Déf.",
     "week": "Semaine",
     "season": "Saison",
     "player": "Joueur",
@@ -331,7 +332,7 @@ TRADUCTIONS_COLONNES = {
     "moyenne_saison": "Moyenne Saison",
     "cette_semaine": "Cette Semaine",
     "ecart": "Écart",
-    "explosive_plays": "Plays Explosifs",
+    "explosive_plays": "Jeux Explosifs",
     "play_type": "Type de Jeu",
     "yards_gained": "Yards",
     "epa": "EPA",
@@ -372,13 +373,25 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
     format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
 
-    header_styles = [
+def render_table(styled_df):
+    html = styled_df.to_html()
+    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
+
+header_styles = [
         {"selector": "th", "props": [
             ("background-color", "#111827"),
             ("color", "white"),
             ("font-weight", "600"),
             ("text-align", "left"),
-            ("padding", "8px 12px"),
+            ("padding", "10px 14px"),
+            ("border-bottom", "2px solid #374151"),
+        ]},
+        {"selector": "td", "props": [
+            ("padding", "8px 14px"),
+        ]},
+        {"selector": "table", "props": [
+            ("border-collapse", "collapse"),
+            ("width", "100%"),
         ]},
     ]
 
@@ -387,4 +400,5 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None):
         .apply(colorer_ligne, axis=1)
         .format(format_dict)
         .set_table_styles(header_styles)
+        .hide(axis="index")
     )

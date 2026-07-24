@@ -64,4 +64,4 @@ fig.update_layout(xaxis_title="Saison", yaxis_title="EPA par play", height=600)
 fig.update_xaxes(dtick=1)
 
 st.plotly_chart(fig, use_container_width=True)
-st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+render_table(style_dataframe(df))

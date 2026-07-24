@@ -34,17 +34,17 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.subheader("Top 3 QB — EPA/dropback")
     df = get_top_qb_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 with col2:
     st.subheader("Top 3 RB — EPA/course")
     df = get_top_rb_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 with col3:
     st.subheader("Top 3 Receveurs — EPA/cible")
     df = get_top_wr_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 st.divider()
 
@@ -53,12 +53,12 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Meilleure attaque de la semaine")
     df = get_best_offense_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 with col2:
     st.subheader("Meilleure défense de la semaine")
     df = get_best_defense_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 st.divider()
 
@@ -91,11 +91,11 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Bataille des turnovers")
     df = get_turnover_battle_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))
 
 with col2:
     st.subheader("Pressions générées")
     if season < 2023:
         st.caption("Donnée de pression partiellement disponible avant 2023 — à interpréter avec prudence.")
     df = get_pressure_leaders_week(season, week)
-    st.dataframe(style_dataframe(df), use_container_width=True, hide_index=True)
+    render_table(style_dataframe(df))

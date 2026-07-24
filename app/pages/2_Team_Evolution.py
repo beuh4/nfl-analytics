@@ -40,4 +40,4 @@ fig.update_xaxes(dtick=1)
 
 st.plotly_chart(fig, use_container_width=True)
 couleur_equipe = colors.get(team_abbr, "#1f77b4")
-st.dataframe(style_dataframe(df, couleur_unique=couleur_equipe), use_container_width=True, hide_index=True)
+render_table(style_dataframe(df, couleur_unique=couleur_equipe))
