@@ -474,6 +474,65 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .hide(axis="index")
     )
 
+def render_podium(df, metric_col, decimals=3):
+    """Podium HTML pour un top 3 : 1er au centre (plus haut), 2e à gauche,
+    3e à droite. Utilise photo_url si présente dans df, sinon un avatar
+    avec les initiales du joueur, coloré aux couleurs de l'équipe."""
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    medailles = ["🥇", "🥈", "🥉"]
+    hauteurs = [130, 100, 80]
+    ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
+
+    blocs = ""
+    for i in ordre_affichage:
+        if i >= len(df):
+            continue
+        row = df.iloc[i]
+        rang = i + 1
+        nom = row.get("player", "")
+        team = row.get("team", "")
+        valeur = row.get(metric_col, 0)
+        couleur_equipe = colors.get(team, "#374151")
+        logo_url = logos.get(team, "")
+        photo_url = row.get("photo_url") if "photo_url" in df.columns else None
+
+        if isinstance(photo_url, str) and photo_url:
+            avatar = (
+                f'<img src="{photo_url}" style="width:70px;height:70px;'
+                f'border-radius:50%;object-fit:cover;border:3px solid {couleur_equipe};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:70px;height:70px;border-radius:50%;background:{couleur_equipe};'
+                f'display:flex;align-items:center;justify-content:center;color:white;'
+                f'font-weight:700;font-size:22px;border:3px solid {couleur_equipe};">{initiales}</div>'
+            )
+
+        logo_html = (
+            f'<img src="{logo_url}" height="18" style="vertical-align:middle;margin-right:4px;">'
+            if logo_url else ""
+        )
+
+        blocs += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
+            <div style="font-size:24px;margin-bottom:4px;">{medailles[rang-1]}</div>
+            {avatar}
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;">{nom}</div>
+            <div style="font-size:12px;color:#6b7280;">{logo_html}{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;">{valeur:.{decimals}f}</div>
+            <div style="width:100%;height:{hauteurs[rang-1]}px;background:{couleur_equipe};border-radius:8px 8px 0 0;margin-top:10px;"></div>
+        </div>
+        """
+
+    html = f'<div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">{blocs}</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 def render_table(styled_df):
     """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()

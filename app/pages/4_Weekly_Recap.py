@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import (
-    get_available_seasons, get_weeks_for_season, style_dataframe, render_table,
+    get_available_seasons, get_weeks_for_season, style_dataframe, render_table, render_podium,
     get_top_qb_week, get_top_rb_week, get_top_wr_week,
     get_best_offense_week, get_best_defense_week, get_biggest_surprises_week,
     get_explosive_plays_week, get_turnover_battle_week, get_pressure_leaders_week,
@@ -26,17 +26,17 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.subheader("Top 3 QB — EPA/dropback")
     df = get_top_qb_week(season, week)
-    render_table(style_dataframe(df))
+    render_podium(df, metric_col="epa_per_play")
 
 with col2:
     st.subheader("Top 3 RB — EPA/course")
     df = get_top_rb_week(season, week)
-    render_table(style_dataframe(df))
+    render_podium(df, metric_col="epa_per_play")
 
 with col3:
     st.subheader("Top 3 Receveurs — EPA/cible")
     df = get_top_wr_week(season, week)
-    render_table(style_dataframe(df))
+    render_podium(df, metric_col="epa_per_play")
 
 st.divider()
 
