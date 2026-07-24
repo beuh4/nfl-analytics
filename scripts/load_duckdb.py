@@ -30,7 +30,13 @@ con.execute("""
     SELECT * FROM read_parquet('data/static/teams.parquet', union_by_name=true)
 """)
 
-for table in ["plays", "games", "players", "teams"]:
+print("Chargement rosters (headshots)...")
+con.execute("""
+    CREATE OR REPLACE TABLE rosters AS
+    SELECT * FROM read_parquet('data/static/rosters.parquet', union_by_name=true)
+""")
+
+for table in ["plays", "games", "players", "teams", "rosters"]:
     count = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     print(f"  {table} : {count} lignes")
 

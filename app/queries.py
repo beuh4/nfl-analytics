@@ -157,11 +157,13 @@ def get_weeks_for_season(season: int):
 def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
     con = get_connection()
     query = """
-        SELECT passer_player_name AS player, posteam AS team,
-               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS dropbacks
-        FROM plays
-        WHERE season = ? AND week = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
-        GROUP BY passer_player_name, posteam
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        WHERE p.season = ? AND p.week = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
@@ -174,11 +176,13 @@ def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
 def get_top_rb_week(season: int, week: int, min_carries: int = 5):
     con = get_connection()
     query = """
-        SELECT rusher_player_name AS player, posteam AS team,
-               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS carries
-        FROM plays
-        WHERE season = ? AND week = ? AND rush = 1 AND rusher_player_id IS NOT NULL
-        GROUP BY rusher_player_name, posteam
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        WHERE p.season = ? AND p.week = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
@@ -191,11 +195,13 @@ def get_top_rb_week(season: int, week: int, min_carries: int = 5):
 def get_top_wr_week(season: int, week: int, min_targets: int = 3):
     con = get_connection()
     query = """
-        SELECT receiver_player_name AS player, posteam AS team,
-               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS targets
-        FROM plays
-        WHERE season = ? AND week = ? AND pass = 1 AND receiver_player_id IS NOT NULL
-        GROUP BY receiver_player_name, posteam
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        WHERE p.season = ? AND p.week = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
