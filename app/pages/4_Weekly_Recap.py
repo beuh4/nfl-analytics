@@ -100,5 +100,7 @@ with col1:
 
 with col2:
     st.subheader("Pressions générées")
+    if season < 2023:
+        st.caption("Donnée de pression partiellement disponible avant 2023 — à interpréter avec prudence.")
     df = get_pressure_leaders_week(season, week)
     st.dataframe(style_by_team(df), use_container_width=True, hide_index=True)
