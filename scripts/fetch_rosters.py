@@ -1,4 +1,5 @@
 import nfl_data_py as nfl
+import pandas as pd
 from pathlib import Path
 
 OUTPUT_DIR = Path("data/static")
@@ -21,6 +22,8 @@ def fetch_rosters():
     absentes = [c for c in COLONNES_ROSTERS if c not in df.columns]
     if absentes:
         print(f"  Colonnes absentes : {absentes}")
+    if "jersey_number" in df.columns:
+        df["jersey_number"] = pd.to_numeric(df["jersey_number"], errors="coerce")
     df = df[presentes]
 
     # Une ligne par joueur ET par saison (pas de dédup globale par player_id) :
