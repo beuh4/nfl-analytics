@@ -24,7 +24,7 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
     border-radius: 16px; padding: 56px 32px 0; margin-bottom: 0; text-align: center;
 }}
 .hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.18em; color: #EA580C; text-transform: uppercase; margin-bottom: 12px; }}
-.hero-title {{ font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.4rem); color: #F8FAFC; margin: 0 0 10px; letter-spacing: -0.02em; }}
+.hero-title {{ font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.4rem); color: #94A3B8; margin: 0 0 10px; letter-spacing: -0.02em; }}
 .hero-tagline {{ font-size: 16px; color: #94A3B8; margin: 0 0 32px; }}
 
 .stat-strip {{
