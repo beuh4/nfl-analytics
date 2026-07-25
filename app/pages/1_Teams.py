@@ -7,6 +7,7 @@ from queries import (
     get_all_teams, get_available_seasons, get_seasons_for_team, get_team_colors, get_team_logos,
     get_team_epa_offense_defense, get_team_epa_by_week, get_all_teams_records, get_team_schedule,
     get_team_qb_leaders, get_team_rb_leaders, get_team_wr_leaders, get_team_defensive_summary,
+    get_team_qb_leaders_yards, get_team_rb_leaders_yards, get_team_wr_leaders_yards,
     style_dataframe, render_table, render_podium, couleur_texte_contraste,
 )
 import plotly.graph_objects as go
@@ -135,18 +136,36 @@ st.divider()
 
 # ─── Leaders offensifs ───
 st.subheader("Leaders offensifs")
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.write("Quarterback — EPA/dropback")
-    render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play")
-with col2:
-    st.write("Running Back — EPA/course")
-    render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play")
-with col3:
-    st.write("Receveur — EPA/cible")
-    render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play")
 
-st.divider()
+vue_stats = st.radio(
+    "Type de statistique",
+    ["Yards", "EPA"],
+    horizontal=True,
+    key=f"vue_stats_{team_abbr}_{season}",
+)
+
+col1, col2, col3 = st.columns(3)
+
+if vue_stats == "Yards":
+    with col1:
+        st.write("Quarterback — Yards lancés")
+        render_podium(get_team_qb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+    with col2:
+        st.write("Running Back — Yards parcourus")
+        render_podium(get_team_rb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+    with col3:
+        st.write("Receveur — Yards attrapés")
+        render_podium(get_team_wr_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+else:
+    with col1:
+        st.write("Quarterback — EPA/dropback")
+        render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play")
+    with col2:
+        st.write("Running Back — EPA/course")
+        render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play")
+    with col3:
+        st.write("Receveur — EPA/cible")
+        render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play")
 
 # ─── Résumé défensif ───
 st.subheader("Résumé défensif")

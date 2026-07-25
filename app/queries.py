@@ -489,6 +489,61 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
     con.close()
     return df
 
+def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_targets]).fetchdf()
+    con.close()
+    return df
 
 # ─────────────────────────────────────────────────────────────
 # Traduction des colonnes et style des tableaux
