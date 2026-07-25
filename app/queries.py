@@ -721,6 +721,132 @@ def render_podium(df, metric_col, decimals=3):
     """
     components.html(html, height=320, scrolling=False)
 
+def get_all_teams_records(season: int):
+    """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
+    la table games (un match compte pour les deux équipes via UNION ALL)."""
+    con = get_connection()
+    query = """
+        WITH normalized AS (
+            SELECT home_team AS team, home_score AS team_score, away_score AS opp_score
+            FROM games WHERE season = ?
+            UNION ALL
+            SELECT away_team AS team, away_score AS team_score, home_score AS opp_score
+            FROM games WHERE season = ?
+        )
+        SELECT team,
+            SUM(CASE WHEN team_score > opp_score THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN team_score < opp_score THEN 1 ELSE 0 END) AS losses,
+            SUM(CASE WHEN team_score = opp_score THEN 1 ELSE 0 END) AS ties
+        FROM normalized
+        WHERE team_score IS NOT NULL AND opp_score IS NOT NULL
+        GROUP BY team
+    """
+    df = con.execute(query, [season, season]).fetchdf()
+    con.close()
+    total = df["wins"] + df["losses"] + df["ties"]
+    df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
+    return df
+
+
+def get_team_schedule(team: str, season: int):
+    """Calendrier complet d'une équipe pour une saison, normalisé du point
+    de vue de cette équipe (team_score/opp_score plutôt que home/away).
+    Sert à la fois pour le bilan, les derniers matchs et les prochains matchs."""
+    con = get_connection()
+    query = """
+        SELECT
+            week, gameday,
+            CASE WHEN home_team = ? THEN away_team ELSE home_team END AS opponent,
+            CASE WHEN home_team = ? THEN TRUE ELSE FALSE END AS domicile,
+            CASE WHEN home_team = ? THEN home_score ELSE away_score END AS team_score,
+            CASE WHEN home_team = ? THEN away_score ELSE home_score END AS opp_score
+        FROM games
+        WHERE season = ? AND (home_team = ? OR away_team = ?)
+        ORDER BY week
+    """
+    df = con.execute(query, [team, team, team, team, season, team, team]).fetchdf()
+    con.close()
+    df["joue"] = df["team_score"].notna() & df["opp_score"].notna()
+    return df
+
+
+def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_defensive_summary(team: str, season: int):
+    """Résumé défensif au niveau équipe. Pas de détail par joueur :
+    sack_player_id et les colonnes de tackle ne sont pas dans le schéma."""
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
+            COUNT(*) FILTER (WHERE fumble_lost = 1) AS fumbles_forces,
+            SUM(CAST(sack AS DOUBLE)) AS sacks,
+            ROUND(
+                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
+                / NULLIF(SUM(CASE WHEN pass = 1 THEN 1 ELSE 0 END), 0),
+                3
+            ) AS taux_pression
+        FROM plays
+        WHERE season = ? AND defteam = ?
+    """
+    df = con.execute(query, [season, team]).fetchdf()
+    con.close()
+    return df
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :

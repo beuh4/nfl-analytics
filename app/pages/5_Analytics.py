@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_team_epa_offense_defense, get_available_seasons, style_dataframe, render_table
 
-st.set_page_config(page_title="Attaque vs Défense", layout="wide")
+st.set_page_config(page_title="Analytics", layout="wide")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
