@@ -42,7 +42,7 @@ html, body, [class*="css"] {
     font-family: 'Manrope', sans-serif;
     font-weight: 800;
     font-size: clamp(2.2rem, 5vw, 3.4rem);
-    color: #F8FAFC;
+    color: #94A3B8;
     margin: 0 0 10px;
     letter-spacing: -0.02em;
     animation: hero-fade-in 0.7s ease-out;
@@ -65,7 +65,7 @@ html, body, [class*="css"] {
 
 <div class="hero-banner">
     <div class="hero-eyebrow">Play-by-play · 2015–2026</div>
-    <h1 class="hero-title">NFL Analytics</h1>
+    <h1 class="hero-title">NFL Analytics FR</h1>
     <p class="hero-tagline">Explore les statistiques NFL saison par saison, semaine par semaine.</p>
 </div>
 """, unsafe_allow_html=True)
