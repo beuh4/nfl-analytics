@@ -22,9 +22,12 @@ COLONNES_PLAYS = [
     "rusher_player_id", "rusher_player_name",
     "receiver_player_id", "receiver_player_name",
     "yards_gained", "touchdown", "first_down",
+    "passing_yards", "receiving_yards", 
     "fumble", "fumble_lost",
     "penalty", "penalty_team", "penalty_yards",
 ]
+
+COLONNES_PLAYS = list(dict.fromkeys(COLONNES_PLAYS))
 
 OUTPUT_DIR = Path("data/seasons")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

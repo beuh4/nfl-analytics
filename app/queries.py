@@ -154,6 +154,10 @@ def get_weeks_for_season(season: int):
     return df["week"].tolist()
 
 
+# ─────────────────────────────────────────────────────────────
+# Requêtes hebdomadaires (Weekly Recap)
+# ─────────────────────────────────────────────────────────────
+
 def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
     con = get_connection()
     query = """
@@ -349,8 +353,147 @@ def get_pressure_leaders_week(season: int, week: int):
     return df
 
 
-# Traduction des noms de colonnes techniques vers un affichage lisible en français.
-# EPA reste tel quel (acronyme reconnu, pas de traduction naturelle utile).
+# ─────────────────────────────────────────────────────────────
+# Requêtes annuelles (Annual Recap) — stats brutes (yards)
+# ─────────────────────────────────────────────────────────────
+
+def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_rb_season_yards(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_wr_season_yards(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_teams_offense_yards_season(season: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, SUM(yards_gained) AS yards, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season]).fetchdf()
+    con.close()
+    return df
+
+
+# ─────────────────────────────────────────────────────────────
+# Requêtes annuelles (Annual Recap) — EPA sur la saison entière
+# ─────────────────────────────────────────────────────────────
+
+def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_rb_season_epa(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_top_wr_season_epa(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+# ─────────────────────────────────────────────────────────────
+# Traduction des colonnes et style des tableaux
+# ─────────────────────────────────────────────────────────────
+
 TRADUCTIONS_COLONNES = {
     "team": "Équipe",
     "team_name": "Nom",
@@ -367,6 +510,7 @@ TRADUCTIONS_COLONNES = {
     "carries": "Courses",
     "targets": "Cibles",
     "plays": "Plays",
+    "yards": "Yards",
     "moyenne_saison": "Moyenne Saison",
     "cette_semaine": "Cette Semaine",
     "ecart": "Écart",
@@ -417,9 +561,6 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
     numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
 
-    # Injection du logo dans la cellule "team", après le calcul des couleurs
-    # (qui repose sur l'abréviation brute), avant le renommage de colonnes.
-    # white-space:nowrap empêche le logo et le texte de se séparer sur deux lignes.
     if show_team_logos and team_col in affichage.columns:
         logos = get_team_logos()
 
@@ -435,8 +576,6 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
         affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
 
-    # Injection optionnelle d'une photo joueur, si une colonne "photo_url"
-    # a été fournie dans le dataframe (ajoutée en amont par la requête SQL).
     if player_col and player_col in affichage.columns and "photo_url" in affichage.columns:
         def _cell_avec_photo(row):
             url = row["photo_url"]
@@ -481,9 +620,19 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .hide(axis="index")
     )
 
+
+def render_table(styled_df):
+    """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
+    ignore le style des en-têtes (set_table_styles) d'un Styler — il ne
+    respecte que les couleurs cellule par cellule. Contrepartie : pas de
+    tri interactif au clic sur une colonne."""
+    html = styled_df.to_html()
+    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
+
+
 def render_podium(df, metric_col, decimals=3):
-    """Podium HTML pour un top 3 : 1er au centre (plus haut), 2e à gauche,
-    3e à droite. Utilise photo_url si présente dans df, sinon un avatar
+    """Podium HTML pour un top 3 de joueurs : 1er au centre (plus haut), 2e à
+    gauche, 3e à droite. Utilise photo_url si présente dans df, sinon un avatar
     avec les initiales du joueur, coloré aux couleurs de l'équipe.
 
     Rendu via components.html (iframe isolé) pour éviter le scintillement
@@ -498,8 +647,6 @@ def render_podium(df, metric_col, decimals=3):
     colors = get_team_colors()
     logos = get_team_logos()
 
-    # Couleurs de badge de rang (or/argent/bronze) plutôt que des emojis
-    # médaille, peu fiables d'un navigateur/OS à l'autre.
     couleurs_rang = ["#FBBF24", "#CBD5E1", "#D97706"]
     hauteurs = [130, 100, 80]
     ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
@@ -545,7 +692,7 @@ def render_podium(df, metric_col, decimals=3):
             {avatar}
             <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>
             <div style="font-size:12px;color:#64748B;">{logo_html}{team}</div>
-            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:.{decimals}f}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
                         border-radius:8px 8px 0 0;margin-top:10px;"></div>
@@ -574,10 +721,81 @@ def render_podium(df, metric_col, decimals=3):
     """
     components.html(html, height=320, scrolling=False)
 
-def render_table(styled_df):
-    """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
-    ignore le style des en-têtes (set_table_styles) d'un Styler — il ne
-    respecte que les couleurs cellule par cellule. Contrepartie : pas de
-    tri interactif au clic sur une colonne."""
-    html = styled_df.to_html()
-    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
+
+def render_team_podium(df, metric_col, decimals=0):
+    """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
+    logo d'équipe en grand format au centre de l'avatar, nom de l'équipe
+    en dessous. Même structure visuelle que render_podium, adaptée aux
+    entités équipe."""
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    couleurs_rang = ["#FBBF24", "#CBD5E1", "#D97706"]
+    hauteurs = [130, 100, 80]
+    ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
+
+    blocs = ""
+    for i in ordre_affichage:
+        if i >= len(df):
+            continue
+        row = df.iloc[i]
+        rang = i + 1
+        team = row.get("team", "")
+        valeur = row.get(metric_col, 0)
+        couleur_equipe = colors.get(team, "#374151")
+        logo_url = logos.get(team, "")
+
+        if logo_url:
+            avatar = (
+                f'<div style="width:70px;height:70px;border-radius:50%;background:white;'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'border:3px solid {couleur_equipe};box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
+                f'<img src="{logo_url}" style="width:50px;height:50px;object-fit:contain;"></div>'
+            )
+        else:
+            avatar = (
+                f'<div style="width:70px;height:70px;border-radius:50%;background:{couleur_equipe};'
+                f'display:flex;align-items:center;justify-content:center;color:white;'
+                f'font-weight:700;font-size:18px;border:3px solid {couleur_equipe};'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">{team}</div>'
+            )
+
+        blocs += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
+            <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
+                        display:flex;align-items:center;justify-content:center;color:#1F2937;
+                        font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
+            {avatar}
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
+            <div style="width:100%;height:{hauteurs[rang-1]}px;
+                        background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
+                        border-radius:8px 8px 0 0;margin-top:10px;"></div>
+        </div>
+        """
+
+    html = f"""
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+            html, body {{
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                font-family: 'Manrope', 'Segoe UI', sans-serif;
+            }}
+        </style>
+    </head>
+    <body>
+        <div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">
+            {blocs}
+        </div>
+    </body>
+    </html>
+    """
+    components.html(html, height=320, scrolling=False)
