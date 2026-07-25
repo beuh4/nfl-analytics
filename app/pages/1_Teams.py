@@ -97,4 +97,26 @@ st.subheader("Résumé défensif")
 def_summary = get_team_defensive_summary(team_abbr, season)
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Interceptions", int(def_summary["interceptions"].iloc[0]))
-col2.metric("Fumbles forcés", int(def_summary["fumbles_forces"].iloc
+col2.metric("Fumbles forcés", int(def_summary["fumbles_forces"].iloc[0]))
+col3.metric("Sacks", f"{def_summary['sacks'].iloc[0]:.0f}")
+col4.metric("Taux de pression", f"{def_summary['taux_pression'].iloc[0]:.1%}" if def_summary['taux_pression'].iloc[0] is not None else "—")
+
+st.divider()
+
+# ─── Tendance EPA semaine par semaine ───
+st.subheader("Tendance EPA — semaine par semaine")
+df_weekly = get_team_epa_by_week(team_abbr, season)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=df_weekly["week"], y=df_weekly["epa_offense"], mode="lines+markers",
+    name="EPA Offense", line=dict(color=couleur_equipe, width=3),
+))
+fig.add_trace(go.Scatter(
+    x=df_weekly["week"], y=df_weekly["epa_defense"], mode="lines+markers",
+    name="EPA Defense", line=dict(color=couleur_equipe, width=2, dash="dot"),
+))
+fig.add_hline(y=0, line_dash="dash", line_color="gray")
+fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
+fig.update_xaxes(dtick=1)
+st.plotly_chart(fig, use_container_width=True)
