@@ -165,7 +165,7 @@ def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.week = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -364,7 +364,7 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
                SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -375,6 +375,162 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
     con.close()
     return df
 
+def get_player_search_list(season: int):
+    """Liste des joueurs ayant au moins une statistique qualifiante (passe,
+    course ou réception) sur la saison — évite de proposer un joueur sans
+    aucune donnée affichable sur sa page."""
+    con = get_connection()
+    query = """
+        WITH candidats AS (
+            SELECT DISTINCT passer_player_id AS player_id FROM plays
+                WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            UNION
+            SELECT DISTINCT rusher_player_id AS player_id FROM plays
+                WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            UNION
+            SELECT DISTINCT receiver_player_id AS player_id FROM plays
+                WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+        )
+        SELECT c.player_id,
+               ANY_VALUE(r.player_name) AS player_name,
+               ANY_VALUE(r.team) AS team,
+               ANY_VALUE(r.position) AS position
+        FROM candidats c
+        LEFT JOIN rosters r ON c.player_id = r.player_id AND r.season = ?
+        GROUP BY c.player_id
+        ORDER BY player_name
+    """
+    df = con.execute(query, [season, season, season, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_bio(player_id: str, season: int):
+    """Bio du joueur telle qu'au moment de la saison donnée. Si absente
+    (joueur non présent au roster cette saison précise), repli sur la
+    saison connue la plus proche."""
+    con = get_connection()
+    query = """
+        SELECT player_name, team, position, age, height, weight,
+               college, jersey_number, years_exp, headshot_url
+        FROM rosters
+        WHERE player_id = ? AND season = ?
+    """
+    df = con.execute(query, [player_id, season]).fetchdf()
+    if df.empty:
+        query_fallback = """
+            SELECT player_name, team, position, age, height, weight,
+                   college, jersey_number, years_exp, headshot_url
+            FROM rosters
+            WHERE player_id = ?
+            ORDER BY ABS(season - ?) ASC
+            LIMIT 1
+        """
+        df = con.execute(query_fallback, [player_id, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_passing_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE pass = 1) AS tentatives,
+            COUNT(*) FILTER (WHERE complete_pass = 1) AS completions,
+            SUM(passing_yards) AS yards,
+            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
+            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
+            ROUND(AVG(epa) FILTER (WHERE qb_dropback = 1), 3) AS epa_per_play,
+            ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe,
+            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
+            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks
+        FROM plays
+        WHERE season = ? AND passer_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_pressure_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks,
+            SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressions_subies,
+            SUM(CAST(sack AS DOUBLE)) AS sacks_subis,
+            ROUND(
+                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
+                / NULLIF(COUNT(*) FILTER (WHERE qb_dropback = 1), 0),
+                3
+            ) AS taux_pression
+        FROM plays
+        WHERE season = ? AND passer_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_rushing_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE rush = 1) AS courses,
+            SUM(rushing_yards) AS yards,
+            COUNT(*) FILTER (WHERE rush = 1 AND touchdown = 1) AS td,
+            ROUND(AVG(epa) FILTER (WHERE rush = 1), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND rusher_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_receiving_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE pass = 1) AS cibles,
+            COUNT(*) FILTER (WHERE complete_pass = 1) AS receptions,
+            SUM(receiving_yards) AS yards,
+            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
+            ROUND(AVG(epa) FILTER (WHERE pass = 1), 3) AS epa_per_play,
+            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
+            ROUND(AVG(yards_after_catch) FILTER (WHERE complete_pass = 1), 1) AS yac_moy
+        FROM plays
+        WHERE season = ? AND receiver_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_player_weekly_trend(player_id: str, season: int, role: str):
+    """role : 'passing', 'rushing' ou 'receiving' — détermine la colonne
+    d'identifiant et le filtre de type de jeu à utiliser."""
+    con = get_connection()
+    colonne_id = {
+        "passing": "passer_player_id",
+        "rushing": "rusher_player_id",
+        "receiving": "receiver_player_id",
+    }[role]
+    filtre_type = {
+        "passing": "qb_dropback = 1",
+        "rushing": "rush = 1",
+        "receiving": "pass = 1",
+    }[role]
+    query = f"""
+        SELECT week, ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
+        FROM plays
+        WHERE season = ? AND {colonne_id} = ? AND {filtre_type}
+        GROUP BY week
+        ORDER BY week
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
 
 def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con = get_connection()
@@ -440,7 +596,7 @@ def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -496,7 +652,7 @@ def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
                SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -832,7 +988,7 @@ def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
