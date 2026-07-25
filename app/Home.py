@@ -13,45 +13,130 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
-html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
+html, body, [class*="css"] {{
+    font-family: 'Manrope', sans-serif;
+}}
 
 .hero-banner {{
-    position: relative; overflow: hidden;
-    background: linear-gradient(180deg, #0F172A 0%, #111C33 100%);
-    background-image:
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 64px),
-        linear-gradient(180deg, #0F172A 0%, #111C33 100%);
-    border-radius: 16px; padding: 56px 32px 0; margin-bottom: 0; text-align: center;
+    position: relative;
+    overflow: hidden;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            rgba(255,255,255,0.05) 0px,
+            rgba(255,255,255,0.05) 1px,
+            transparent 1px,
+            transparent 58px
+        ),
+        linear-gradient(180deg,#0F172A 0%,#111C33 100%);
+    border-radius:16px 16px 0 0;
+    padding:70px 40px 55px;
+    text-align:center;
 }}
-.hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.18em; color: #EA580C; text-transform: uppercase; margin-bottom: 12px; }}
-.hero-title {{ font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.4rem); color: #94A3B8; margin: 0 0 10px; letter-spacing: -0.02em; }}
-.hero-tagline {{ font-size: 16px; color: #94A3B8; margin: 0 0 32px; }}
+
+.hero-eyebrow {{
+    font-family:'Space Mono', monospace;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.20em;
+    text-transform:uppercase;
+    color:#F97316;
+    margin-bottom:20px;
+}}
+
+.hero-title {{
+    font-size:clamp(3rem,6vw,4.5rem);
+    font-weight:800;
+    color:#F8FAFC;
+    letter-spacing:-0.04em;
+    line-height:1;
+    margin:0;
+    text-shadow:
+        0 2px 10px rgba(0,0,0,.35),
+        0 0 24px rgba(255,255,255,.05);
+}}
+
+.hero-tagline {{
+    margin-top:18px;
+    font-size:1.25rem;
+    color:#CBD5E1;
+    font-weight:500;
+}}
 
 .stat-strip {{
-    display: flex; justify-content: center; gap: 48px;
-    background: #111C33; padding: 24px 32px; border-radius: 0 0 16px 16px;
-    margin-bottom: 32px; flex-wrap: wrap;
-}}
-.stat-item {{ text-align: center; }}
-.stat-value {{ font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; color: #EA580C; }}
-.stat-label {{ font-size: 12px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }}
+    display:flex;
+    justify-content:center;
+    gap:60px;
+    flex-wrap:wrap;
 
-.nav-card {{
-    background: #EFF2F6; border-radius: 12px; padding: 20px;
-    height: 100%; border: 1px solid #E2E8F0;
+    background:#111C33;
+
+    padding:28px 40px;
+
+    border-radius:0 0 16px 16px;
+
+    margin-bottom:35px;
 }}
+
+.stat-item {{
+    text-align:center;
+}}
+
+.stat-value {{
+    font-family:'Space Mono', monospace;
+    font-size:30px;
+    font-weight:700;
+    color:#F97316;
+}}
+
+.stat-label {{
+    margin-top:6px;
+    font-size:12px;
+    color:#94A3B8;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+}}
+
 </style>
 
 <div class="hero-banner">
-    <div class="hero-eyebrow">Play-by-play · {stats['saison_min']}–{stats['saison_max']}</div>
-    <h1 class="hero-title">NFL Analytics</h1>
-    <p class="hero-tagline">Explore les statistiques NFL équipe par équipe, joueur par joueur, match par match.</p>
+
+    <div class="hero-eyebrow">
+        Play-by-play • {stats['saison_min']}–{stats['saison_max']}
+    </div>
+
+    <div class="hero-title">
+        NFL Analytics
+    </div>
+
+    <div class="hero-tagline">
+        Every team. Every player. Every play.
+    </div>
+
 </div>
+
 <div class="stat-strip">
-    <div class="stat-item"><div class="stat-value">{stats['nb_saisons']}</div><div class="stat-label">Saisons couvertes</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_plays']:,}</div><div class="stat-label">Jeux analysés</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_teams']}</div><div class="stat-label">Équipes</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_players']:,}</div><div class="stat-label">Joueurs suivis</div></div>
+
+    <div class="stat-item">
+        <div class="stat-value">{stats['nb_saisons']}</div>
+        <div class="stat-label">Seasons</div>
+    </div>
+
+    <div class="stat-item">
+        <div class="stat-value">{stats['total_plays']:,}</div>
+        <div class="stat-label">Plays</div>
+    </div>
+
+    <div class="stat-item">
+        <div class="stat-value">{stats['total_teams']}</div>
+        <div class="stat-label">Teams</div>
+    </div>
+
+    <div class="stat-item">
+        <div class="stat-value">{stats['total_players']:,}</div>
+        <div class="stat-label">Players</div>
+    </div>
+
 </div>
 """, unsafe_allow_html=True)
 
