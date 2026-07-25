@@ -94,4 +94,4 @@ with col1:
 with col2:
     st.subheader("Top 3 Défenses — EPA concédé le plus bas")
     top_def = df_teams_epa.nsmallest(3, "epa_defense").reset_index(drop=True)
-    render_team_podium(top_def, metric_col="epa_defense", decimals=3)²
+    render_team_podium(top_def, metric_col="epa_defense", decimals=3)
