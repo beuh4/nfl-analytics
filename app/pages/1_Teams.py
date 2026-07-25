@@ -26,19 +26,28 @@ abbr_to_name = {v: k for k, v in team_name_to_abbr.items()}
 
 # Identifiant équipe piloté par l'URL (?team=MIA) — équivalent fonctionnel
 # d'une route dédiée, dans les limites de Streamlit Cloud.
-team_abbr = st.query_params.get("team", teams_df["team_abbr"].iloc[0])
-if team_abbr not in abbr_to_name:
-    team_abbr = teams_df["team_abbr"].iloc[0]
+# L'équipe n'est initialisée depuis l'URL qu'une seule fois (première visite
+# de session). Ensuite, le key= dédié garde son état indépendamment du
+# widget Saison, qui a son propre key — plus de couplage accidentel entre
+# les deux sélections.
+if "select_team" not in st.session_state:
+    initial_abbr = st.query_params.get("team", teams_df["team_abbr"].iloc[0])
+    if initial_abbr not in abbr_to_name:
+        initial_abbr = teams_df["team_abbr"].iloc[0]
+    st.session_state["select_team"] = abbr_to_name[initial_abbr]
 
 col_select, col_season = st.columns([2, 1])
 with col_select:
-    team_name = st.selectbox("Équipe", teams_df["team_name"], index=list(team_name_to_abbr.keys()).index(abbr_to_name[team_abbr]))
+    team_name = st.selectbox("Équipe", teams_df["team_name"], key="select_team")
     team_abbr = team_name_to_abbr[team_name]
     st.query_params["team"] = team_abbr
 
 with col_season:
     seasons = get_seasons_for_team(team_abbr)
-    season = st.selectbox("Saison", seasons, index=len(seasons) - 1)
+    # key inclut team_abbr : changer d'équipe réinitialise logiquement la
+    # saison à la plus récente disponible pour cette équipe, sans jamais
+    # affecter la sélection d'équipe elle-même.
+    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key=f"select_season_{team_abbr}")
 
 colors = get_team_colors()
 logos = get_team_logos()
