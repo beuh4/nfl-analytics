@@ -404,6 +404,62 @@ def get_player_search_list(season: int):
     con.close()
     return df
 
+def convertir_taille_poids(height_val, weight_val):
+    """Convertit taille (pouces ou format '6-2') et poids (livres) en
+    mètres et kilogrammes. Retourne (None, None) si non convertible."""
+    metres = None
+    try:
+        inches = float(height_val)
+        metres = round(inches * 0.0254, 2)
+    except (TypeError, ValueError):
+        if isinstance(height_val, str) and "-" in height_val:
+            try:
+                pieds, pouces = height_val.split("-")
+                total_pouces = int(pieds) * 12 + int(pouces)
+                metres = round(total_pouces * 0.0254, 2)
+            except ValueError:
+                metres = None
+
+    poids_kg = None
+    try:
+        poids_kg = round(float(weight_val) * 0.453592)
+    except (TypeError, ValueError):
+        poids_kg = None
+
+    return metres, poids_kg
+
+
+def get_player_games_played(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT COUNT(DISTINCT game_id) AS matchs
+        FROM plays
+        WHERE season = ?
+          AND (passer_player_id = ? OR rusher_player_id = ? OR receiver_player_id = ?)
+    """
+    df = con.execute(query, [season, player_id, player_id, player_id]).fetchdf()
+    con.close()
+    return int(df["matchs"].iloc[0]) if not df.empty else 0
+
+
+def get_home_stats():
+    """Chiffres réels de la base, pour le bandeau de la page d'accueil."""
+    con = get_connection()
+    seasons = con.execute(
+        "SELECT MIN(season) AS min_s, MAX(season) AS max_s, COUNT(DISTINCT season) AS n_seasons FROM plays"
+    ).fetchdf().iloc[0]
+    total_plays = con.execute("SELECT COUNT(*) AS n FROM plays").fetchdf()["n"].iloc[0]
+    total_teams = con.execute("SELECT COUNT(*) AS n FROM teams").fetchdf()["n"].iloc[0]
+    total_players = con.execute("SELECT COUNT(DISTINCT player_id) AS n FROM rosters").fetchdf()["n"].iloc[0]
+    con.close()
+    return {
+        "saison_min": int(seasons["min_s"]),
+        "saison_max": int(seasons["max_s"]),
+        "nb_saisons": int(seasons["n_seasons"]),
+        "total_plays": int(total_plays),
+        "total_teams": int(total_teams),
+        "total_players": int(total_players),
+    }
 
 def get_player_bio(player_id: str, season: int):
     """Bio du joueur telle qu'au moment de la saison donnée. Si absente

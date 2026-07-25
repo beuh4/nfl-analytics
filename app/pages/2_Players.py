@@ -8,7 +8,7 @@ from queries import (
     get_available_seasons, get_team_colors, get_team_logos,
     get_player_search_list, get_player_bio, get_player_passing_season,
     get_player_pressure_season, get_player_rushing_season, get_player_receiving_season,
-    get_player_weekly_trend,
+    get_player_weekly_trend, get_player_games_played, convertir_taille_poids,
 )
 
 st.set_page_config(page_title="Players", layout="wide")
@@ -27,29 +27,36 @@ season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="player_sea
 
 joueurs = get_player_search_list(season)
 
-col_team, col_player = st.columns([1, 2])
+col_team, col_search = st.columns([1, 2])
 with col_team:
     equipes_dispo = ["Toutes"] + sorted(joueurs["team"].dropna().unique().tolist())
     filtre_equipe = st.selectbox("Filtrer par équipe", equipes_dispo, key="player_team_filter")
 
-joueurs_filtres = joueurs if filtre_equipe == "Toutes" else joueurs[joueurs["team"] == filtre_equipe]
+joueurs_equipe = joueurs if filtre_equipe == "Toutes" else joueurs[joueurs["team"] == filtre_equipe]
 
-with col_player:
-    if joueurs_filtres.empty:
-        st.warning("Aucun joueur trouvé pour ce filtre.")
-        st.stop()
+with col_search:
+    recherche = st.text_input("Rechercher un joueur", placeholder="Ex : Mahomes", key="player_search_box")
 
-    initial_id = st.query_params.get("player")
-    noms = joueurs_filtres["player_name"].tolist()
-    index_defaut = 0
-    if initial_id and initial_id in joueurs_filtres["player_id"].values:
-        nom_initial = joueurs_filtres[joueurs_filtres["player_id"] == initial_id]["player_name"].iloc[0]
-        if nom_initial in noms:
-            index_defaut = noms.index(nom_initial)
+if recherche:
+    joueurs_filtres = joueurs_equipe[joueurs_equipe["player_name"].str.contains(recherche, case=False, na=False)]
+else:
+    joueurs_filtres = joueurs_equipe
 
-    nom_choisi = st.selectbox("Joueur", noms, index=index_defaut, key="player_select")
-    player_id = joueurs_filtres[joueurs_filtres["player_name"] == nom_choisi]["player_id"].iloc[0]
-    st.query_params["player"] = player_id
+if joueurs_filtres.empty:
+    st.warning("Aucun joueur trouvé pour ce filtre.")
+    st.stop()
+
+initial_id = st.query_params.get("player")
+noms = joueurs_filtres["player_name"].tolist()
+index_defaut = 0
+if initial_id and initial_id in joueurs_filtres["player_id"].values:
+    nom_initial = joueurs_filtres[joueurs_filtres["player_id"] == initial_id]["player_name"].iloc[0]
+    if nom_initial in noms:
+        index_defaut = noms.index(nom_initial)
+
+nom_choisi = st.selectbox("Joueur", noms, index=index_defaut, key="player_select")
+player_id = joueurs_filtres[joueurs_filtres["player_name"] == nom_choisi]["player_id"].iloc[0]
+st.query_params["player"] = player_id
 
 st.divider()
 
@@ -91,12 +98,20 @@ with col_info:
     </div>
     """, unsafe_allow_html=True)
 
+    metres, poids_kg = convertir_taille_poids(bio["height"], bio["weight"])
     age = int(bio["age"]) if bio["age"] == bio["age"] else "—"
+    matchs = get_player_games_played(player_id, season)
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Âge", age)
-    col2.metric("Taille / Poids", f"{bio['height']} / {bio['weight']} lb" if bio["height"] == bio["height"] else "—")
-    col3.metric("Université", bio["college"] if isinstance(bio["college"], str) else "—")
-    col4.metric("Expérience", f"{int(bio['years_exp'])} ans" if bio["years_exp"] == bio["years_exp"] else "—")
+    col2.metric("Taille", f"{metres:.2f} m" if metres else "—")
+    col3.metric("Poids", f"{poids_kg} kg" if poids_kg else "—")
+    col4.metric("Matchs joués", matchs)
+
+    # Texte simple, pas st.metric : évite la troncature sur les noms longs.
+    universite = bio["college"] if isinstance(bio["college"], str) and bio["college"] else "—"
+    experience = f"{int(bio['years_exp'])} ans" if bio["years_exp"] == bio["years_exp"] else "—"
+    st.write(f"**Université :** {universite}  ·  **Expérience :** {experience}")
 
 st.divider()
 
