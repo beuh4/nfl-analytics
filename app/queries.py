@@ -724,49 +724,60 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con.close()
     return df
 
-def get_home_top_players(season: int, limit: int = 5):
-    """Top joueurs offensifs tous postes confondus, classés par yards bruts.
-    Position réelle lue depuis rosters (pas déduite du rôle offensif) pour
-    distinguer correctement WR/TE parmi les receveurs."""
+def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
+    """Top joueurs offensifs par yards bruts. Si poste est précisé (QB, RB,
+    WR), ne renvoie que ce poste — sinon combine les trois (les QB dominent
+    alors presque toujours, la comparaison brute n'étant pas équitable
+    entre volumes de jeu différents)."""
     con = get_connection()
-    query = """
-        WITH qb AS (
-            SELECT p.passer_player_name AS player, p.posteam AS team,
-                   COALESCE(ANY_VALUE(r.position), 'QB') AS position,
-                   SUM(p.passing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
-            GROUP BY p.passer_player_name, p.posteam
-            HAVING COUNT(*) >= 100
-        ),
-        rb AS (
-            SELECT p.rusher_player_name AS player, p.posteam AS team,
-                   COALESCE(ANY_VALUE(r.position), 'RB') AS position,
-                   SUM(p.rushing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-            GROUP BY p.rusher_player_name, p.posteam
-            HAVING COUNT(*) >= 50
-        ),
-        wr AS (
-            SELECT p.receiver_player_name AS player, p.posteam AS team,
-                   COALESCE(ANY_VALUE(r.position), 'REC') AS position,
-                   SUM(p.receiving_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-            GROUP BY p.receiver_player_name, p.posteam
-            HAVING COUNT(*) >= 30
-        )
-        SELECT * FROM qb
-        UNION ALL SELECT * FROM rb
-        UNION ALL SELECT * FROM wr
-        ORDER BY yards DESC
-        LIMIT ?
+
+    qb_sql = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               COALESCE(ANY_VALUE(r.position), 'QB') AS position,
+               SUM(p.passing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= 100
     """
-    df = con.execute(query, [season, season, season, limit]).fetchdf()
+    rb_sql = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               COALESCE(ANY_VALUE(r.position), 'RB') AS position,
+               SUM(p.rushing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= 50
+    """
+    wr_sql = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               COALESCE(ANY_VALUE(r.position), 'REC') AS position,
+               SUM(p.receiving_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= 30
+    """
+
+    blocs = {"QB": qb_sql, "RB": rb_sql, "WR": wr_sql}
+
+    if poste and poste in blocs:
+        query = f"SELECT * FROM ({blocs[poste]}) ORDER BY yards DESC LIMIT ?"
+        df = con.execute(query, [season, limit]).fetchdf()
+    else:
+        query = f"""
+            WITH qb AS ({qb_sql}), rb AS ({rb_sql}), wr AS ({wr_sql})
+            SELECT * FROM qb
+            UNION ALL SELECT * FROM rb
+            UNION ALL SELECT * FROM wr
+            ORDER BY yards DESC
+            LIMIT ?
+        """
+        df = con.execute(query, [season, season, season, limit]).fetchdf()
+
     con.close()
     return df
 

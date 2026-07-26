@@ -24,20 +24,20 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
     background-image:
         repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 64px),
         linear-gradient(180deg, #0F172A 0%, #111C33 100%);
-    border-radius: 16px; padding: 32px 32px 0; margin-bottom: 0; text-align: center;
+    border-radius: 16px; padding: 18px 32px 0; margin-bottom: 0; text-align: center;
 }}
-.hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.16em; color: #EA580C; text-transform: uppercase; margin-bottom: 8px; }}
-.hero-title {{ font-weight: 800; font-size: clamp(1.7rem, 3.5vw, 2.4rem); color: #F8FAFC; margin: 0 0 6px; letter-spacing: -0.02em; }}
-.hero-tagline {{ font-size: 14px; color: #94A3B8; margin: 0 0 20px; }}
+.hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #EA580C; text-transform: uppercase; margin-bottom: 4px; }}
+.hero-title {{ font-weight: 800; font-size: clamp(1.3rem, 2.6vw, 1.8rem); color: #CBD5E1; margin: 0 0 3px; letter-spacing: -0.02em; }}
+.hero-tagline {{ font-size: 13px; color: #94A3B8; margin: 0 0 12px; }}
 
 .stat-strip {{
-    display: flex; justify-content: center; gap: 40px;
-    background: #111C33; padding: 14px 32px; border-radius: 0 0 16px 16px;
-    margin-bottom: 28px; flex-wrap: wrap;
+    display: flex; justify-content: center; gap: 36px;
+    background: #111C33; padding: 10px 32px; border-radius: 0 0 16px 16px;
+    margin-bottom: 24px; flex-wrap: wrap;
 }}
 .stat-item {{ text-align: center; }}
-.stat-value {{ font-family: 'Space Mono', monospace; font-size: 20px; font-weight: 700; color: #EA580C; }}
-.stat-label {{ font-size: 11px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }}
+.stat-value {{ font-family: 'Space Mono', monospace; font-size: 17px; font-weight: 700; color: #EA580C; }}
+.stat-label {{ font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }}
 </style>
 
 <div class="hero-banner">
@@ -68,7 +68,12 @@ with col_teams:
 
 with col_players:
     st.write("**Top 5 joueurs offensifs — Yards**")
-    render_top_players_list(get_home_top_players(home_season))
+    poste_choisi = st.radio(
+        "Poste", ["Tous", "QB", "RB", "WR"], horizontal=True,
+        key=f"home_poste_{home_season}", label_visibility="collapsed",
+    )
+    filtre_poste = None if poste_choisi == "Tous" else poste_choisi
+    render_top_players_list(get_home_top_players(home_season, poste=filtre_poste))
     st.page_link("pages/2_Players.py", label="Explorer les joueurs", icon="👤")
 
 with col_games:
