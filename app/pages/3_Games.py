@@ -1,6 +1,202 @@
 import streamlit as st
+import plotly.graph_objects as go
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from queries import (
+    get_available_seasons, get_weeks_for_season, get_games_for_week, get_game_info,
+    get_team_colors, get_team_logos, get_game_win_probability, get_game_epa_cumulative,
+    get_game_score_progression, get_game_drives, get_game_top_performer,
+    get_game_play_by_play, style_dataframe, render_table,
+)
 
 st.set_page_config(page_title="Games", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Games")
-st.info("Pages match individuelles — Phase 4, en cours de construction.")
-st.write("Prévu : score, drive summary, win probability, EPA timeline, stats joueurs, play-by-play.")
+
+seasons = get_available_seasons()
+season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="game_season")
+
+weeks = get_weeks_for_season(season)
+week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="game_week")
+
+games = get_games_for_week(season, week)
+if games.empty:
+    st.info("Aucun match programmé pour cette semaine.")
+    st.stop()
+
+options_match = [
+    f"{row['away_team']} @ {row['home_team']}"
+    + (f" ({int(row['away_score'])}-{int(row['home_score'])})" if row["home_score"] == row["home_score"] else "")
+    for _, row in games.iterrows()
+]
+
+initial_id = st.query_params.get("game")
+index_defaut = 0
+if initial_id and initial_id in games["game_id"].values:
+    index_defaut = games[games["game_id"] == initial_id].index[0]
+
+match_choisi = st.selectbox("Match", options_match, index=index_defaut, key="game_select")
+game_id = games.iloc[options_match.index(match_choisi)]["game_id"]
+st.query_params["game"] = game_id
+
+st.divider()
+
+# ─── En-tête du match ───
+info = get_game_info(game_id)
+if info.empty:
+    st.error("Match introuvable.")
+    st.stop()
+info = info.iloc[0]
+
+colors = get_team_colors()
+logos = get_team_logos()
+
+col_away, col_score, col_home = st.columns([2, 1, 2])
+with col_away:
+    st.markdown(f"""
+    <div style="text-align:center;">
+        <img src="{logos.get(info['away_team'], '')}" height="70"><br>
+        <span style="font-size:20px;font-weight:700;color:{colors.get(info['away_team'], '#374151')};">{info['away_team']}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_score:
+    score_display = (
+        f"{int(info['away_score'])} – {int(info['home_score'])}"
+        if info["home_score"] == info["home_score"] else "À venir"
+    )
+    st.markdown(f"""
+    <div style="text-align:center;padding-top:15px;">
+        <div style="font-size:32px;font-weight:800;font-family:'Space Mono',monospace;">{score_display}</div>
+        <div style="font-size:12px;color:#64748B;">Semaine {int(info['week'])} · {info['gameday']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_home:
+    st.markdown(f"""
+    <div style="text-align:center;">
+        <img src="{logos.get(info['home_team'], '')}" height="70"><br>
+        <span style="font-size:20px;font-weight:700;color:{colors.get(info['home_team'], '#374151')};">{info['home_team']}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Stade", info["stadium"] if isinstance(info["stadium"], str) else "—")
+col2.metric("Surface", info["surface"] if isinstance(info["surface"], str) else "—")
+col3.metric("Météo", f"{int(info['temp'])}°F" if info["temp"] == info["temp"] else "—")
+col4.metric("Prolongation", "Oui" if info["overtime"] == 1 else "Non")
+
+st.divider()
+
+# ─── Meilleurs joueurs du match ───
+st.subheader("Meilleurs joueurs")
+
+col_away, col_home = st.columns(2)
+for col, team in [(col_away, info["away_team"]), (col_home, info["home_team"])]:
+    with col:
+        st.write(f"**{team}**")
+        qb = get_game_top_performer(game_id, team, "passing")
+        rb = get_game_top_performer(game_id, team, "rushing")
+        wr = get_game_top_performer(game_id, team, "receiving")
+        if not qb.empty:
+            st.write(f"QB — {qb['player'].iloc[0]} : {int(qb['yards'].iloc[0])} yds, EPA {qb['epa_per_play'].iloc[0]:.3f}")
+        if not rb.empty:
+            st.write(f"RB — {rb['player'].iloc[0]} : {int(rb['yards'].iloc[0])} yds, EPA {rb['epa_per_play'].iloc[0]:.3f}")
+        if not wr.empty:
+            st.write(f"REC — {wr['player'].iloc[0]} : {int(wr['yards'].iloc[0])} yds, EPA {wr['epa_per_play'].iloc[0]:.3f}")
+
+st.divider()
+
+# ─── Win Probability ───
+st.subheader("Win Probability")
+wp_df = get_game_win_probability(game_id)
+if not wp_df.empty:
+    fig_wp = go.Figure()
+    fig_wp.add_trace(go.Scatter(
+        x=wp_df["progression"], y=wp_df["home_wp"] * 100,
+        mode="lines", fill="tozeroy",
+        line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
+        name=info["home_team"],
+    ))
+    fig_wp.add_hline(y=50, line_dash="dash", line_color="gray")
+    fig_wp.update_layout(
+        xaxis_title="Progression du match", yaxis_title=f"Probabilité de victoire — {info['home_team']} (%)",
+        yaxis_range=[0, 100], height=350,
+    )
+    st.plotly_chart(fig_wp, use_container_width=True, key=f"wp_{game_id}")
+else:
+    st.info("Données de win probability indisponibles pour ce match.")
+
+st.divider()
+
+# ─── Progression du score ───
+st.subheader("Progression du score")
+score_df = get_game_score_progression(game_id)
+if not score_df.empty:
+    fig_score = go.Figure()
+    fig_score.add_trace(go.Scatter(
+        x=score_df["progression"], y=score_df["ecart_domicile"],
+        mode="lines", line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
+    ))
+    fig_score.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig_score.update_layout(
+        xaxis_title="Progression du match",
+        yaxis_title=f"Écart ({info['home_team']} positif)",
+        height=350,
+    )
+    st.plotly_chart(fig_score, use_container_width=True, key=f"score_{game_id}")
+else:
+    st.info("Données de score indisponibles pour ce match.")
+
+st.divider()
+
+# ─── EPA cumulé ───
+st.subheader("EPA cumulé du match")
+epa_df = get_game_epa_cumulative(game_id)
+if not epa_df.empty:
+    fig_epa = go.Figure()
+    for team in epa_df["posteam"].unique():
+        df_team = epa_df[epa_df["posteam"] == team]
+        fig_epa.add_trace(go.Scatter(
+            x=df_team["progression"], y=df_team["epa_cumule"],
+            mode="lines", name=team,
+            line=dict(color=colors.get(team, "#374151"), width=2),
+        ))
+    fig_epa.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig_epa.update_layout(xaxis_title="Progression du match", yaxis_title="EPA cumulé", height=350)
+    st.plotly_chart(fig_epa, use_container_width=True, key=f"epa_{game_id}")
+else:
+    st.info("Données EPA indisponibles pour ce match.")
+
+st.divider()
+
+# ─── Drives ───
+st.subheader("Résumé des drives")
+drives = get_game_drives(game_id)
+if not drives.empty:
+    render_table(style_dataframe(drives, team_col="team"))
+else:
+    st.info("Données de drives indisponibles pour ce match.")
+
+st.divider()
+
+# ─── Play-by-play ───
+st.subheader("Play-by-play")
+quarts_dispo = ["Tous", 1, 2, 3, 4, 5]
+quart_choisi = st.selectbox("Filtrer par quart-temps", quarts_dispo, key=f"quarter_{game_id}")
+filtre_quart = None if quart_choisi == "Tous" else quart_choisi
+
+pbp = get_game_play_by_play(game_id, quarter=filtre_quart)
+if not pbp.empty:
+    render_table(style_dataframe(pbp, team_col="posteam"))
+else:
+    st.info("Play-by-play indisponible pour ce match.")

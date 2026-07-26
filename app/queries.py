@@ -1019,6 +1019,15 @@ TRADUCTIONS_COLONNES = {
     "pressures": "Pressions",
     "pass_plays": "Plays Passe",
     "taux_pression": "Taux Pression",
+    "qtr": "Quart-temps",
+    "down": "Down",
+    "ydstogo": "À Franchir",
+    "yardline_100": "Position",
+    "desc": "Description",
+    "resultat": "Résultat",
+    "depart": "Départ",
+    "possession": "Possession",
+    "score_marque": "Score Marqué",
 }
 
 
@@ -1239,6 +1248,142 @@ def get_all_teams():
     con.close()
     return df
 
+def get_games_for_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT game_id, week, gameday, home_team, away_team, home_score, away_score
+        FROM games
+        WHERE season = ? AND week = ?
+        ORDER BY gameday
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+
+def get_game_info(game_id: str):
+    con = get_connection()
+    query = """
+        SELECT season, week, gameday, home_team, away_team, home_score, away_score,
+               roof, surface, temp, wind, stadium, home_coach, away_coach, overtime
+        FROM games WHERE game_id = ?
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_game_win_probability(game_id: str):
+    """Win probability du point de vue de l'équipe à domicile, reconstruite
+    depuis wp (probabilité de l'équipe en possession) selon qui a le ballon."""
+    con = get_connection()
+    query = """
+        SELECT play_id,
+               CASE WHEN posteam = home_team THEN wp ELSE 1 - wp END AS home_wp
+        FROM plays
+        WHERE game_id = ? AND wp IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = range(1, len(df) + 1)
+    return df
+
+
+def get_game_epa_cumulative(game_id: str):
+    con = get_connection()
+    query = """
+        SELECT play_id, posteam,
+               SUM(epa) OVER (PARTITION BY posteam ORDER BY play_id) AS epa_cumule
+        FROM plays
+        WHERE game_id = ? AND posteam IS NOT NULL AND epa IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = df.groupby("posteam").cumcount() + 1
+    return df
+
+
+def get_game_score_progression(game_id: str):
+    """Écart de score du point de vue de l'équipe à domicile, reconstruit
+    depuis score_differential (qui est du point de vue de l'équipe en
+    possession, donc inversé quand c'est l'équipe visiteuse qui l'a)."""
+    con = get_connection()
+    query = """
+        SELECT play_id,
+               CASE WHEN posteam = home_team THEN score_differential ELSE -score_differential END AS ecart_domicile
+        FROM plays
+        WHERE game_id = ? AND score_differential IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = range(1, len(df) + 1)
+    return df
+
+
+def get_game_drives(game_id: str):
+    con = get_connection()
+    query = """
+        SELECT drive, ANY_VALUE(posteam) AS team,
+               MAX(drive_play_count) AS plays,
+               ANY_VALUE(fixed_drive_result) AS resultat,
+               ANY_VALUE(drive_start_yard_line) AS depart,
+               ANY_VALUE(drive_time_of_possession) AS possession,
+               ANY_VALUE(drive_ended_with_score) AS score_marque
+        FROM plays
+        WHERE game_id = ? AND drive IS NOT NULL
+        GROUP BY drive
+        ORDER BY drive
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    return df
+
+
+def get_game_top_performer(game_id: str, team: str, role: str):
+    """role : 'passing', 'rushing' ou 'receiving'."""
+    con = get_connection()
+    colonnes = {
+        "passing": ("passer_player_name", "passer_player_id", "passing_yards", "qb_dropback = 1"),
+        "rushing": ("rusher_player_name", "rusher_player_id", "rushing_yards", "rush = 1"),
+        "receiving": ("receiver_player_name", "receiver_player_id", "receiving_yards", "pass = 1"),
+    }
+    nom_col, id_col, yards_col, filtre = colonnes[role]
+    query = f"""
+        SELECT {nom_col} AS player, SUM({yards_col}) AS yards, ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE game_id = ? AND posteam = ? AND {filtre} AND {id_col} IS NOT NULL
+        GROUP BY {nom_col}
+        ORDER BY yards DESC
+        LIMIT 1
+    """
+    df = con.execute(query, [game_id, team]).fetchdf()
+    con.close()
+    return df
+
+
+def get_game_play_by_play(game_id: str, quarter: int | None = None):
+    con = get_connection()
+    if quarter:
+        query = """
+            SELECT qtr, down, ydstogo, yardline_100, desc, ROUND(epa, 3) AS epa, posteam
+            FROM plays
+            WHERE game_id = ? AND desc IS NOT NULL AND qtr = ?
+            ORDER BY play_id
+        """
+        df = con.execute(query, [game_id, quarter]).fetchdf()
+    else:
+        query = """
+            SELECT qtr, down, ydstogo, yardline_100, desc, ROUND(epa, 3) AS epa, posteam
+            FROM plays
+            WHERE game_id = ? AND desc IS NOT NULL
+            ORDER BY play_id
+        """
+        df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    return df
 
 def get_team_schedule(team: str, season: int):
     """Calendrier complet d'une équipe pour une saison, normalisé du point
