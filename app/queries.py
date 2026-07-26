@@ -1064,7 +1064,10 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
             if url:
                 return (
                     f'<span style="white-space:nowrap;">'
-                    f'<img src="{url}" height="20" style="vertical-align:middle;margin-right:6px;">{abbr}'
+                    f'<span style="display:inline-block;background:white;border-radius:50%;'
+                    f'padding:2px;margin-right:6px;line-height:0;">'
+                    f'<img src="{url}" height="18" style="display:block;">'
+                    f'</span>{abbr}'
                     f'</span>'
                 )
             return abbr
