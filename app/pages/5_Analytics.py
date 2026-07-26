@@ -27,18 +27,16 @@ df = get_team_epa_offense_defense(season)
 logos = get_team_logos()
 df["logo_url"] = df["team"].map(logos)
 
-x_min, x_max = df["epa_offense"].min(), df["epa_offense"].max()
-y_min, y_max = df["epa_defense"].min(), df["epa_defense"].max()
-x_range = x_max - x_min
-y_range = y_max - y_min
+# Échelle fixe : plage réaliste de l'EPA/play au niveau équipe sur une
+# saison NFL, cohérente d'une saison à l'autre plutôt que recalculée à
+# partir des données (qui varierait légèrement selon la saison affichée).
+AXE_MIN, AXE_MAX = -0.2, 0.2
 
-taille_logo_x = max(x_range * 0.15, 0.015)
-taille_logo_y = max(y_range * 0.15, 0.015)
+taille_logo_x = 0.022
+taille_logo_y = 0.022
 
-# Marge visuelle pour que les diagonales couvrent tout le graphique,
-# logos compris en bordure.
-x0_ligne = x_min - x_range * 0.08
-x1_ligne = x_max + x_range * 0.08
+x0_ligne = AXE_MIN
+x1_ligne = AXE_MAX
 
 fig = go.Figure()
 
@@ -90,7 +88,8 @@ for _, row in df.iterrows():
             )
         )
 
-fig.update_yaxes(autorange="reversed")  # EPA défensif négatif = bonne défense, donc en haut
+fig.update_xaxes(range=[AXE_MIN, AXE_MAX])
+fig.update_yaxes(range=[AXE_MAX, AXE_MIN])  # inversé : EPA défensif négatif = bonne défense, donc en haut
 
 fig.update_layout(
     xaxis_title="EPA offensif par play (plus haut = meilleure attaque)",
