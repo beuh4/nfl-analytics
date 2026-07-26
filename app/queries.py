@@ -725,7 +725,7 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     return df
 
 def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
-    """Top joueurs offensifs par yards bruts. ""
+    """Top joueurs offensifs par yards bruts. """
     con = get_connection()
 
     qb_sql = """
