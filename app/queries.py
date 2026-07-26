@@ -1170,6 +1170,67 @@ def get_team_defensive_summary(team: str, season: int):
     df = con.execute(query, [season, team]).fetchdf()
     con.close()
     return df
+def get_qb_full_rankings(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT passer_player_id AS player_id,
+               SUM(passing_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play,
+               ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe
+        FROM plays
+        WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+        GROUP BY passer_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+
+def get_rb_full_rankings(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT rusher_player_id AS player_id,
+               SUM(rushing_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+        GROUP BY rusher_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+
+def get_wr_full_rankings(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT receiver_player_id AS player_id,
+               SUM(receiving_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+        GROUP BY receiver_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+def get_rank_label(df_rankings, player_id: str, metric_col: str):
+    """Retourne '#3 / 24' si le joueur est qualifié pour ce classement,
+    None sinon (échantillon trop petit ou stat non applicable)."""
+    if df_rankings.empty or player_id not in df_rankings["player_id"].values:
+        return None
+    df_sorted = df_rankings.sort_values(metric_col, ascending=False).reset_index(drop=True)
+    idx = df_sorted[df_sorted["player_id"] == player_id].index
+    if len(idx) == 0:
+        return None
+    rang = idx[0] + 1
+    total = len(df_sorted)
+    return f"#{rang} / {total}"
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :

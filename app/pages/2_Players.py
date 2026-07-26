@@ -9,6 +9,7 @@ from queries import (
     get_player_search_list, get_player_bio, get_player_passing_season,
     get_player_pressure_season, get_player_rushing_season, get_player_receiving_season,
     get_player_weekly_trend, get_player_games_played, convertir_taille_poids,
+    get_qb_full_rankings, get_rb_full_rankings, get_wr_full_rankings, get_rank_label,
     get_player_defensive_season, get_player_defensive_weekly_trend,
 )
 
@@ -121,25 +122,21 @@ passing = get_player_passing_season(player_id, season)
 if not passing.empty and passing["dropbacks"].iloc[0] and passing["dropbacks"].iloc[0] > 0:
     st.subheader("Passing")
     p = passing.iloc[0]
+    classement_qb = get_qb_full_rankings(season)
+
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Tentatives", int(p["tentatives"]))
     col2.metric("Complétions", int(p["completions"]))
-    col3.metric("Yards", f"{int(p['yards']):,}" if p["yards"] == p["yards"] else "—")
+    col3.metric("Yards", f"{int(p['yards']):,}" if p["yards"] == p["yards"] else "—",
+                get_rank_label(classement_qb, player_id, "yards"))
     col4.metric("TD / INT", f"{int(p['td'])} / {int(p['interceptions'])}")
-    col5.metric("EPA/Dropback", f"{p['epa_per_play']:.3f}")
+    col5.metric("EPA/Dropback", f"{p['epa_per_play']:.3f}",
+                get_rank_label(classement_qb, player_id, "epa_per_play"))
 
     col1, col2 = st.columns(2)
-    col1.metric("CPOE", f"{p['cpoe']:+.1f}%" if p["cpoe"] == p["cpoe"] else "—")
+    col1.metric("CPOE", f"{p['cpoe']:+.1f}%" if p["cpoe"] == p["cpoe"] else "—",
+                get_rank_label(classement_qb, player_id, "cpoe"))
     col2.metric("Air Yards Moy.", f"{p['air_yards_moy']:.1f}" if p["air_yards_moy"] == p["air_yards_moy"] else "—")
-
-    pression = get_player_pressure_season(player_id, season)
-    if not pression.empty:
-        pr = pression.iloc[0]
-        st.write("**Pression subie**")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Dropbacks pressés", f"{pr['pressions_subies']:.0f}" if pr["pressions_subies"] == pr["pressions_subies"] else "—")
-        col2.metric("Taux de pression", f"{pr['taux_pression']:.1%}" if pr["taux_pression"] == pr["taux_pression"] else "—")
-        col3.metric("Sacks subis", f"{pr['sacks_subis']:.0f}" if pr["sacks_subis"] == pr["sacks_subis"] else "—")
 
     st.divider()
 
@@ -148,24 +145,33 @@ rushing = get_player_rushing_season(player_id, season)
 if not rushing.empty and rushing["courses"].iloc[0] and rushing["courses"].iloc[0] > 0:
     st.subheader("Rushing")
     r = rushing.iloc[0]
+    classement_rb = get_rb_full_rankings(season)
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Courses", int(r["courses"]))
-    col2.metric("Yards", f"{int(r['yards']):,}" if r["yards"] == r["yards"] else "—")
+    col2.metric("Yards", f"{int(r['yards']):,}" if r["yards"] == r["yards"] else "—",
+                get_rank_label(classement_rb, player_id, "yards"))
     col3.metric("TD", int(r["td"]))
-    col4.metric("EPA/Course", f"{r['epa_per_play']:.3f}")
+    col4.metric("EPA/Course", f"{r['epa_per_play']:.3f}",
+                get_rank_label(classement_rb, player_id, "epa_per_play"))
     st.divider()
+
 
 # ─── Receiving ───
 receiving = get_player_receiving_season(player_id, season)
 if not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].iloc[0] > 0:
     st.subheader("Receiving")
     rc = receiving.iloc[0]
+    classement_wr = get_wr_full_rankings(season)
+
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Cibles", int(rc["cibles"]))
     col2.metric("Réceptions", int(rc["receptions"]))
-    col3.metric("Yards", f"{int(rc['yards']):,}" if rc["yards"] == rc["yards"] else "—")
+    col3.metric("Yards", f"{int(rc['yards']):,}" if rc["yards"] == rc["yards"] else "—",
+                get_rank_label(classement_wr, player_id, "yards"))
     col4.metric("TD", int(rc["td"]))
-    col5.metric("EPA/Cible", f"{rc['epa_per_play']:.3f}")
+    col5.metric("EPA/Cible", f"{rc['epa_per_play']:.3f}",
+                get_rank_label(classement_wr, player_id, "epa_per_play"))
 
     col1, col2 = st.columns(2)
     col1.metric("Air Yards Moy.", f"{rc['air_yards_moy']:.1f}" if rc["air_yards_moy"] == rc["air_yards_moy"] else "—")
