@@ -69,7 +69,7 @@ with col_teams:
 with col_players:
     st.write("**Top 5 joueurs offensifs — Yards**")
     poste_choisi = st.radio(
-        "Poste", ["Tous", "QB", "RB", "WR"], horizontal=True,
+        "Poste", ["QB", "RB", "WR"], horizontal=True,
         key=f"home_poste_{home_season}", label_visibility="collapsed",
     )
     filtre_poste = None if poste_choisi == "Tous" else poste_choisi
@@ -130,3 +130,5 @@ with st.container(border=True):
     st.subheader("Un avis à partager ?")
     st.write("Ce projet est en phase de test. Tes retours m'aident à savoir quoi améliorer en priorité.")
     st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/TON_LIEN_ICI/viewform", icon="📝")
+
+
