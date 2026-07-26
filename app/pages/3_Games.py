@@ -42,7 +42,7 @@ options_match = [
 initial_id = st.query_params.get("game")
 index_defaut = 0
 if initial_id and initial_id in games["game_id"].values:
-    index_defaut = games[games["game_id"] == initial_id].index[0]
+    index_defaut = int(games[games["game_id"] == initial_id].index[0])
 
 match_choisi = st.selectbox("Match", options_match, index=index_defaut, key="game_select")
 game_id = games.iloc[options_match.index(match_choisi)]["game_id"]
