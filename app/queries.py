@@ -376,9 +376,9 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
     return df
 
 def get_player_search_list(season: int):
-    """Liste des joueurs ayant au moins une statistique qualifiante (passe,
-    course ou réception) sur la saison — évite de proposer un joueur sans
-    aucune donnée affichable sur sa page."""
+    """Liste des joueurs ayant au moins une statistique qualifiante — offensive
+    (passe, course, réception) ou défensive (tacle, sack, INT, PD, FF) — sur
+    la saison."""
     con = get_connection()
     query = """
         WITH candidats AS (
@@ -390,6 +390,15 @@ def get_player_search_list(season: int):
             UNION
             SELECT DISTINCT receiver_player_id AS player_id FROM plays
                 WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            UNION SELECT DISTINCT solo_tackle_1_player_id FROM plays WHERE season = ? AND solo_tackle_1_player_id IS NOT NULL
+            UNION SELECT DISTINCT solo_tackle_2_player_id FROM plays WHERE season = ? AND solo_tackle_2_player_id IS NOT NULL
+            UNION SELECT DISTINCT assist_tackle_1_player_id FROM plays WHERE season = ? AND assist_tackle_1_player_id IS NOT NULL
+            UNION SELECT DISTINCT assist_tackle_2_player_id FROM plays WHERE season = ? AND assist_tackle_2_player_id IS NOT NULL
+            UNION SELECT DISTINCT sack_player_id FROM plays WHERE season = ? AND sack_player_id IS NOT NULL
+            UNION SELECT DISTINCT half_sack_1_player_id FROM plays WHERE season = ? AND half_sack_1_player_id IS NOT NULL
+            UNION SELECT DISTINCT interception_player_id FROM plays WHERE season = ? AND interception_player_id IS NOT NULL
+            UNION SELECT DISTINCT pass_defense_1_player_id FROM plays WHERE season = ? AND pass_defense_1_player_id IS NOT NULL
+            UNION SELECT DISTINCT forced_fumble_player_1_player_id FROM plays WHERE season = ? AND forced_fumble_player_1_player_id IS NOT NULL
         )
         SELECT c.player_id,
                ANY_VALUE(r.player_name) AS player_name,
@@ -397,10 +406,63 @@ def get_player_search_list(season: int):
                ANY_VALUE(r.position) AS position
         FROM candidats c
         LEFT JOIN rosters r ON c.player_id = r.player_id AND r.season = ?
+        WHERE c.player_id IS NOT NULL
         GROUP BY c.player_id
         ORDER BY player_name
     """
-    df = con.execute(query, [season, season, season, season]).fetchdf()
+    params = [season] * 13
+    df = con.execute(query, params).fetchdf()
+    con.close()
+    return df
+def get_player_defensive_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE solo_tackle_1_player_id = ? OR solo_tackle_2_player_id = ?) AS tacles_solo,
+            COUNT(*) FILTER (WHERE assist_tackle_1_player_id = ? OR assist_tackle_2_player_id = ?
+                              OR assist_tackle_3_player_id = ? OR assist_tackle_4_player_id = ?) AS tacles_assistes,
+            COUNT(*) FILTER (WHERE tackle_for_loss_1_player_id = ? OR tackle_for_loss_2_player_id = ?) AS tacles_pour_perte,
+            COUNT(*) FILTER (WHERE sack_player_id = ?) AS sacks_pleins,
+            COUNT(*) FILTER (WHERE half_sack_1_player_id = ? OR half_sack_2_player_id = ?) AS demi_sacks,
+            COUNT(*) FILTER (WHERE qb_hit_1_player_id = ? OR qb_hit_2_player_id = ?) AS pressions_qb,
+            COUNT(*) FILTER (WHERE interception_player_id = ?) AS interceptions,
+            COUNT(*) FILTER (WHERE pass_defense_1_player_id = ? OR pass_defense_2_player_id = ?) AS passes_defendues,
+            COUNT(*) FILTER (WHERE forced_fumble_player_1_player_id = ? OR forced_fumble_player_2_player_id = ?) AS fumbles_forces
+        FROM plays
+        WHERE season = ?
+    """
+    params = [player_id] * 18 + [season]
+    df = con.execute(query, params).fetchdf()
+    con.close()
+    if not df.empty:
+        df["tacles_totaux"] = df["tacles_solo"] + df["tacles_assistes"]
+        df["sacks_totaux"] = df["sacks_pleins"] + df["demi_sacks"] * 0.5
+    return df
+
+
+def get_player_defensive_weekly_trend(player_id: str, season: int):
+    """Volume défensif hebdomadaire (tacles + sacks + PD + FF + INT) —
+    l'EPA n'est pas attribuable à un défenseur individuel dans nflverse
+    (crédité au niveau de l'équipe défensive, pas du joueur), donc on suit
+    un indicateur de volume plutôt qu'une métrique EPA ici."""
+    con = get_connection()
+    query = """
+        SELECT week,
+            COUNT(*) FILTER (WHERE solo_tackle_1_player_id = ? OR solo_tackle_2_player_id = ?
+                              OR assist_tackle_1_player_id = ? OR assist_tackle_2_player_id = ?
+                              OR assist_tackle_3_player_id = ? OR assist_tackle_4_player_id = ?
+                              OR sack_player_id = ? OR half_sack_1_player_id = ? OR half_sack_2_player_id = ?
+                              OR interception_player_id = ?
+                              OR pass_defense_1_player_id = ? OR pass_defense_2_player_id = ?
+                              OR forced_fumble_player_1_player_id = ? OR forced_fumble_player_2_player_id = ?
+                             ) AS volume_defensif
+        FROM plays
+        WHERE season = ?
+        GROUP BY week
+        ORDER BY week
+    """
+    params = [player_id] * 14 + [season]
+    df = con.execute(query, params).fetchdf()
     con.close()
     return df
 

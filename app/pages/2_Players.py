@@ -9,6 +9,7 @@ from queries import (
     get_player_search_list, get_player_bio, get_player_passing_season,
     get_player_pressure_season, get_player_rushing_season, get_player_receiving_season,
     get_player_weekly_trend, get_player_games_played, convertir_taille_poids,
+    get_player_defensive_season, get_player_defensive_weekly_trend,
 )
 
 st.set_page_config(page_title="Players", layout="wide")
@@ -171,9 +172,30 @@ if not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].i
     col2.metric("YAC Moy.", f"{rc['yac_moy']:.1f}" if rc["yac_moy"] == rc["yac_moy"] else "—")
     st.divider()
 
-# ─── Tendance EPA — semaine par semaine ───
-st.subheader("Tendance EPA — semaine par semaine")
+# ─── Defense ───
+defense = get_player_defensive_season(player_id, season)
+a_stats_defensives = not defense.empty and (
+    defense["tacles_totaux"].iloc[0] + defense["sacks_totaux"].iloc[0]
+    + defense["interceptions"].iloc[0] + defense["passes_defendues"].iloc[0]
+    + defense["fumbles_forces"].iloc[0]
+) > 0
 
+if a_stats_defensives:
+    st.subheader("Defense")
+    d = defense.iloc[0]
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Tacles (total)", int(d["tacles_totaux"]))
+    col2.metric("Tacles pour perte", int(d["tacles_pour_perte"]))
+    col3.metric("Sacks", f"{d['sacks_totaux']:.1f}")
+    col4.metric("Pressions QB", int(d["pressions_qb"]))
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Interceptions", int(d["interceptions"]))
+    col2.metric("Passes défendues", int(d["passes_defendues"]))
+    col3.metric("Fumbles forcés", int(d["fumbles_forces"]))
+    st.divider()
+
+# ─── Tendance EPA — semaine par semaine (offense) ───
 roles_actifs = []
 if not passing.empty and passing["dropbacks"].iloc[0] and passing["dropbacks"].iloc[0] > 0:
     roles_actifs.append(("passing", "Passing"))
@@ -182,8 +204,39 @@ if not rushing.empty and rushing["courses"].iloc[0] and rushing["courses"].iloc[
 if not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].iloc[0] > 0:
     roles_actifs.append(("receiving", "Receiving"))
 
-if not roles_actifs:
+if roles_actifs:
+    st.subheader("Tendance EPA — semaine par semaine")
+    fig = go.Figure()
+    styles = [dict(width=3), dict(width=2, dash="dot"), dict(width=2, dash="dash")]
+    for (role, label), style in zip(roles_actifs, styles):
+        df_trend = get_player_weekly_trend(player_id, season, role)
+        fig.add_trace(go.Scatter(
+            x=df_trend["week"], y=df_trend["epa_per_play"], mode="lines+markers",
+            name=label, line=dict(color=couleur_equipe, **style),
+        ))
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
+    fig.update_xaxes(dtick=1)
+    st.plotly_chart(fig, use_container_width=True)
+
+# ─── Tendance défensive — semaine par semaine ───
+if a_stats_defensives:
+    st.subheader("Tendance défensive — semaine par semaine")
+    st.caption("Volume (tacles + sacks + interceptions + passes défendues + fumbles forcés) — l'EPA n'est pas attribuable individuellement en défense.")
+    df_def_trend = get_player_defensive_weekly_trend(player_id, season)
+    fig_def = go.Figure()
+    fig_def.add_trace(go.Bar(
+        x=df_def_trend["week"], y=df_def_trend["volume_defensif"],
+        marker_color=couleur_equipe, name="Volume défensif",
+    ))
+    fig_def.update_layout(xaxis_title="Semaine", yaxis_title="Actions défensives", height=400)
+    fig_def.update_xaxes(dtick=1)
+    st.plotly_chart(fig_def, use_container_width=True)
+
+if not roles_actifs and not a_stats_defensives:
     st.info("Aucune donnée hebdomadaire disponible.")
+
+
 else:
     fig = go.Figure()
     styles = [dict(width=3), dict(width=2, dash="dot"), dict(width=2, dash="dash")]
