@@ -506,6 +506,9 @@ def get_home_stats():
         "SELECT MIN(season) AS min_s, MAX(season) AS max_s, COUNT(DISTINCT season) AS n_seasons FROM plays"
     ).fetchdf().iloc[0]
     total_plays = con.execute("SELECT COUNT(*) AS n FROM plays").fetchdf()["n"].iloc[0]
+    total_games = con.execute(
+        "SELECT COUNT(*) AS n FROM games WHERE home_score IS NOT NULL AND away_score IS NOT NULL"
+    ).fetchdf()["n"].iloc[0]
     total_teams = con.execute("SELECT COUNT(*) AS n FROM teams").fetchdf()["n"].iloc[0]
     total_players = con.execute("SELECT COUNT(DISTINCT player_id) AS n FROM rosters").fetchdf()["n"].iloc[0]
     con.close()
@@ -514,6 +517,7 @@ def get_home_stats():
         "saison_max": int(seasons["max_s"]),
         "nb_saisons": int(seasons["n_seasons"]),
         "total_plays": int(total_plays),
+        "total_games": int(total_games),
         "total_teams": int(total_teams),
         "total_players": int(total_players),
     }
@@ -645,47 +649,6 @@ def get_player_weekly_trend(player_id: str, season: int, role: str):
     con.close()
     return df
 
-def get_home_top_players(season: int, limit: int = 5):
-    """Top joueurs offensifs tous postes confondus, classés par EPA/play —
-    seule métrique directement comparable entre QB, RB et WR."""
-    con = get_connection()
-    query = """
-        WITH qb AS (
-            SELECT p.passer_player_name AS player, p.posteam AS team, 'QB' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
-            GROUP BY p.passer_player_name, p.posteam
-            HAVING COUNT(*) >= 100
-        ),
-        rb AS (
-            SELECT p.rusher_player_name AS player, p.posteam AS team, 'RB' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-            GROUP BY p.rusher_player_name, p.posteam
-            HAVING COUNT(*) >= 50
-        ),
-        wr AS (
-            SELECT p.receiver_player_name AS player, p.posteam AS team, 'WR' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
-            FROM plays p
-            LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-            WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-            GROUP BY p.receiver_player_name, p.posteam
-            HAVING COUNT(*) >= 30
-        )
-        SELECT * FROM qb
-        UNION ALL SELECT * FROM rb
-        UNION ALL SELECT * FROM wr
-        ORDER BY epa_per_play DESC
-        LIMIT ?
-    """
-    df = con.execute(query, [season, season, season, limit]).fetchdf()
-    con.close()
-    return df
 
 
 def render_top_players_list(df):
@@ -762,13 +725,15 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     return df
 
 def get_home_top_players(season: int, limit: int = 5):
-    """Top joueurs offensifs tous postes confondus, classés par EPA/play —
-    seule métrique directement comparable entre QB, RB et WR."""
+    """Top joueurs offensifs tous postes confondus, classés par yards bruts.
+    Position réelle lue depuis rosters (pas déduite du rôle offensif) pour
+    distinguer correctement WR/TE parmi les receveurs."""
     con = get_connection()
     query = """
         WITH qb AS (
-            SELECT p.passer_player_name AS player, p.posteam AS team, 'QB' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            SELECT p.passer_player_name AS player, p.posteam AS team,
+                   COALESCE(ANY_VALUE(r.position), 'QB') AS position,
+                   SUM(p.passing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
             FROM plays p
             LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
             WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
@@ -776,8 +741,9 @@ def get_home_top_players(season: int, limit: int = 5):
             HAVING COUNT(*) >= 100
         ),
         rb AS (
-            SELECT p.rusher_player_name AS player, p.posteam AS team, 'RB' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            SELECT p.rusher_player_name AS player, p.posteam AS team,
+                   COALESCE(ANY_VALUE(r.position), 'RB') AS position,
+                   SUM(p.rushing_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
             FROM plays p
             LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
             WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
@@ -785,8 +751,9 @@ def get_home_top_players(season: int, limit: int = 5):
             HAVING COUNT(*) >= 50
         ),
         wr AS (
-            SELECT p.receiver_player_name AS player, p.posteam AS team, 'WR' AS position,
-                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            SELECT p.receiver_player_name AS player, p.posteam AS team,
+                   COALESCE(ANY_VALUE(r.position), 'REC') AS position,
+                   SUM(p.receiving_yards) AS yards, ANY_VALUE(r.headshot_url) AS photo_url
             FROM plays p
             LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
             WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
@@ -796,7 +763,7 @@ def get_home_top_players(season: int, limit: int = 5):
         SELECT * FROM qb
         UNION ALL SELECT * FROM rb
         UNION ALL SELECT * FROM wr
-        ORDER BY epa_per_play DESC
+        ORDER BY yards DESC
         LIMIT ?
     """
     df = con.execute(query, [season, season, season, limit]).fetchdf()
@@ -820,7 +787,7 @@ def render_top_players_list(df):
         photo = row.get("photo_url")
         nom = row["player"]
         position = row["position"]
-        valeur = row["epa_per_play"]
+        valeur = row["yards"]
 
         if isinstance(photo, str) and photo:
             avatar = (
@@ -845,7 +812,7 @@ def render_top_players_list(df):
                     <img src="{logo}" height="12">{team} · {position}
                 </div>
             </div>
-            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{valeur:.3f}</div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{int(valeur):,}</div>
         </div>
         """
 
@@ -858,6 +825,7 @@ def render_top_players_list(df):
     </body></html>
     """
     components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)
+
 
 def get_top_wr_season_yards(season: int, min_targets: int = 30):
     con = get_connection()

@@ -42,14 +42,14 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
 
 <div class="hero-banner">
     <div class="hero-eyebrow">Play-by-play · {stats['saison_min']}–{stats['saison_max']}</div>
-    <h1 class="hero-title">NFL Analytics</h1>
-    <p class="hero-tagline">Explore les statistiques NFL équipe par équipe, joueur par joueur, match par match.</p>
+    <h1 class="hero-title">NFL Analytics FR</h1>
+    <p class="hero-tagline">Every team. Every player. Every play.</p>
 </div>
 <div class="stat-strip">
-    <div class="stat-item"><div class="stat-value">{stats['nb_saisons']}</div><div class="stat-label">Saisons couvertes</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_plays']:,}</div><div class="stat-label">Jeux analysés</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_teams']}</div><div class="stat-label">Équipes</div></div>
-    <div class="stat-item"><div class="stat-value">{stats['total_players']:,}</div><div class="stat-label">Joueurs suivis</div></div>
+    <div class="stat-item"><div class="stat-value">{stats['total_plays']:,}</div><div class="stat-label">Plays</div></div>
+    <div class="stat-item"><div class="stat-value">{stats['total_games']:,}</div><div class="stat-label">Games</div></div>
+    <div class="stat-item"><div class="stat-value">{stats['total_teams']}</div><div class="stat-label">Teams</div></div>
+    <div class="stat-item"><div class="stat-value">{stats['nb_saisons']}</div><div class="stat-label">Seasons</div></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -67,7 +67,7 @@ with col_teams:
     st.page_link("pages/4_Rankings.py", label="Voir tous les classements", icon="🏆")
 
 with col_players:
-    st.write("**Top 5 joueurs offensifs — EPA/play**")
+    st.write("**Top 5 joueurs offensifs — Yards**")
     render_top_players_list(get_home_top_players(home_season))
     st.page_link("pages/2_Players.py", label="Explorer les joueurs", icon="👤")
 
