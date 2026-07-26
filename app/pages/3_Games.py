@@ -128,16 +128,17 @@ st.subheader("Meilleurs joueurs")
 col_away, col_home = st.columns(2)
 for col, team in [(col_away, info["away_team"]), (col_home, info["home_team"])]:
     with col:
-        st.write(f"**{team}**")
-        qb = get_game_top_performer(game_id, team, "passing")
-        rb = get_game_top_performer(game_id, team, "rushing")
-        wr = get_game_top_performer(game_id, team, "receiving")
-        if not qb.empty:
-            st.write(f"QB — {qb['player'].iloc[0]} : {int(qb['yards'].iloc[0])} yds, EPA {qb['epa_per_play'].iloc[0]:.3f}")
-        if not rb.empty:
-            st.write(f"RB — {rb['player'].iloc[0]} : {int(rb['yards'].iloc[0])} yds, EPA {rb['epa_per_play'].iloc[0]:.3f}")
-        if not wr.empty:
-            st.write(f"REC — {wr['player'].iloc[0]} : {int(wr['yards'].iloc[0])} yds, EPA {wr['epa_per_play'].iloc[0]:.3f}")
+        logo = logos.get(team, "")
+        couleur = colors.get(team, "#374151")
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+            f'<img src="{logo}" height="24"><span style="font-weight:700;color:{couleur};">{team}</span></div>',
+            unsafe_allow_html=True,
+        )
+        qb = get_game_top_performer(game_id, team, season, "passing")
+        rb = get_game_top_performer(game_id, team, season, "rushing")
+        wr = get_game_top_performer(game_id, team, season, "receiving")
+        render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur)
 
 st.divider()
 
