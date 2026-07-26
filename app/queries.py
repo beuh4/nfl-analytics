@@ -1368,17 +1368,17 @@ def get_game_play_by_play(game_id: str, quarter: int | None = None):
     con = get_connection()
     if quarter:
         query = """
-            SELECT qtr, down, ydstogo, yardline_100, desc, ROUND(epa, 3) AS epa, posteam
+            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
             FROM plays
-            WHERE game_id = ? AND desc IS NOT NULL AND qtr = ?
+            WHERE game_id = ? AND "desc" IS NOT NULL AND qtr = ?
             ORDER BY play_id
         """
         df = con.execute(query, [game_id, quarter]).fetchdf()
     else:
         query = """
-            SELECT qtr, down, ydstogo, yardline_100, desc, ROUND(epa, 3) AS epa, posteam
+            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
             FROM plays
-            WHERE game_id = ? AND desc IS NOT NULL
+            WHERE game_id = ? AND "desc" IS NOT NULL
             ORDER BY play_id
         """
         df = con.execute(query, [game_id]).fetchdf()
