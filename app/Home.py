@@ -3,7 +3,10 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from queries import get_home_stats
+from queries import (
+    get_home_stats, get_home_current_season, get_home_top_teams,
+    get_home_recent_games, render_top_teams_list, render_recent_games_list,
+)
 
 st.set_page_config(page_title="NFL Analytics", layout="wide", page_icon="🏈")
 
@@ -24,7 +27,7 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
     border-radius: 16px; padding: 56px 32px 0; margin-bottom: 0; text-align: center;
 }}
 .hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.18em; color: #EA580C; text-transform: uppercase; margin-bottom: 12px; }}
-.hero-title {{ font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.4rem); color: #94A3B8; margin: 0 0 10px; letter-spacing: -0.02em; }}
+.hero-title {{ font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.4rem); color: #F8FAFC; margin: 0 0 10px; letter-spacing: -0.02em; }}
 .hero-tagline {{ font-size: 16px; color: #94A3B8; margin: 0 0 32px; }}
 
 .stat-strip {{
@@ -35,11 +38,6 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
 .stat-item {{ text-align: center; }}
 .stat-value {{ font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; color: #EA580C; }}
 .stat-label {{ font-size: 12px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }}
-
-.nav-card {{
-    background: #EFF2F6; border-radius: 12px; padding: 20px;
-    height: 100%; border: 1px solid #E2E8F0;
-}}
 </style>
 
 <div class="hero-banner">
@@ -55,8 +53,7 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
 </div>
 """, unsafe_allow_html=True)
 
-st.divider()
-
+# ─── Navigation principale ───
 col1, col2, col3 = st.columns(3)
 with col1:
     with st.container(border=True):
@@ -95,3 +92,33 @@ with st.container(border=True):
     st.subheader("ℹ️ About")
     st.write("Source des données, méthodologie, et formulaire de retour.")
     st.page_link("pages/7_About.py", label="Ouvrir", icon="➡️")
+
+st.divider()
+
+# ─── Aperçu de la saison ───
+st.subheader("Aperçu de la saison")
+
+home_season = get_home_current_season()
+st.caption(f"Données de la saison {home_season}")
+
+col_teams, col_games = st.columns(2)
+
+with col_teams:
+    st.write("**Top 5 équipes — EPA Offensif**")
+    df_top_teams = get_home_top_teams(home_season)
+    render_top_teams_list(df_top_teams)
+    st.page_link("pages/4_Rankings.py", label="Voir tous les classements", icon="🏆")
+
+with col_games:
+    st.write("**Derniers matchs**")
+    df_recent = get_home_recent_games(home_season)
+    render_recent_games_list(df_recent)
+    st.page_link("pages/1_Teams.py", label="Explorer les équipes", icon="🏈")
+
+st.divider()
+
+# ─── Feedback ───
+with st.container(border=True):
+    st.subheader("Un avis à partager ?")
+    st.write("Ce projet est en phase de test. Tes retours m'aident à savoir quoi améliorer en priorité.")
+    st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/TON_LIEN_ICI/viewform", icon="📝")
