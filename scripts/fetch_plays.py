@@ -43,6 +43,10 @@ COLONNES_PLAYS = [
     "pass_defense_2_player_id", "pass_defense_2_player_name",
     "forced_fumble_player_1_player_id", "forced_fumble_player_1_player_name",
     "forced_fumble_player_2_player_id", "forced_fumble_player_2_player_name",
+    "desc",
+    "drive", "drive_play_count", "fixed_drive_result",
+    "drive_start_yard_line", "drive_time_of_possession",
+    "drive_ended_with_score", "drive_inside20",
 ]
 
 COLONNES_PLAYS = list(dict.fromkeys(COLONNES_PLAYS))
