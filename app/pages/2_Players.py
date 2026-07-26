@@ -235,18 +235,3 @@ if a_stats_defensives:
 
 if not roles_actifs and not a_stats_defensives:
     st.info("Aucune donnée hebdomadaire disponible.")
-
-
-else:
-    fig = go.Figure()
-    styles = [dict(width=3), dict(width=2, dash="dot"), dict(width=2, dash="dash")]
-    for (role, label), style in zip(roles_actifs, styles):
-        df_trend = get_player_weekly_trend(player_id, season, role)
-        fig.add_trace(go.Scatter(
-            x=df_trend["week"], y=df_trend["epa_per_play"], mode="lines+markers",
-            name=label, line=dict(color=couleur_equipe, **style),
-        ))
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
-    fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
-    fig.update_xaxes(dtick=1)
-    st.plotly_chart(fig_def, use_container_width=True, key=f"defense_trend_{player_id}_{season}")
