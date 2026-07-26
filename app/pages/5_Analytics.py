@@ -32,8 +32,8 @@ y_min, y_max = df["epa_defense"].min(), df["epa_defense"].max()
 x_range = x_max - x_min
 y_range = y_max - y_min
 
-taille_logo_x = max(x_range * 0.09, 0.01)
-taille_logo_y = max(y_range * 0.09, 0.01)
+taille_logo_x = max(x_range * 0.15, 0.015)
+taille_logo_y = max(y_range * 0.15, 0.015)
 
 # Marge visuelle pour que les diagonales couvrent tout le graphique,
 # logos compris en bordure.
@@ -64,7 +64,7 @@ fig.add_trace(go.Scatter(
     x=df["epa_offense"],
     y=df["epa_defense"],
     mode="markers",
-    marker=dict(size=32, opacity=0),
+    marker=dict(size=44, opacity=0),
     customdata=df[["team_name", "plays_offense", "plays_defense"]],
     hovertemplate=(
         "<b>%{customdata[0]}</b><br>"
@@ -95,7 +95,7 @@ fig.update_yaxes(autorange="reversed")  # EPA défensif négatif = bonne défens
 fig.update_layout(
     xaxis_title="EPA offensif par play (plus haut = meilleure attaque)",
     yaxis_title="EPA défensif par play (plus haut sur ce graphe = meilleure défense)",
-    height=700,
+    height=780,
 )
 
 st.plotly_chart(fig, use_container_width=True)
