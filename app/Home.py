@@ -62,7 +62,7 @@ st.caption(f"Données de la saison {home_season}")
 col_teams, col_players, col_games = st.columns(3)
 
 with col_teams:
-    st.write("**Top 5 équipes — EPA Offensif**")
+    st.write("**Top 7 équipes — EPA Offensif**")
     render_top_teams_list(get_home_top_teams(home_season))
     st.page_link("pages/4_Rankings.py", label="Voir tous les classements", icon="🏆")
 

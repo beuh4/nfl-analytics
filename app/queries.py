@@ -725,10 +725,7 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     return df
 
 def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
-    """Top joueurs offensifs par yards bruts. Si poste est précisé (QB, RB,
-    WR), ne renvoie que ce poste — sinon combine les trois (les QB dominent
-    alors presque toujours, la comparaison brute n'étant pas équitable
-    entre volumes de jeu différents)."""
+    """Top joueurs offensifs par yards bruts. ""
     con = get_connection()
 
     qb_sql = """
@@ -1439,7 +1436,7 @@ def get_home_current_season():
     return int(df["season"].iloc[0])
 
 
-def get_home_top_teams(season: int, limit: int = 5):
+def get_home_top_teams(season: int, limit: int = 7):
     con = get_connection()
     query = """
         SELECT posteam AS team, AVG(epa) AS epa_offense
@@ -1454,7 +1451,7 @@ def get_home_top_teams(season: int, limit: int = 5):
     return df
 
 
-def get_home_recent_games(season: int, limit: int = 5):
+def get_home_recent_games(season: int, limit: int = 7):
     con = get_connection()
     query = """
         SELECT week, gameday, home_team, away_team, home_score, away_score
