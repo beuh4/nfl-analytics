@@ -704,7 +704,7 @@ def render_top_players_list(df):
     <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
     </body></html>
     """
-    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)
+    st.iframe(html, height=min(58 * len(df) + 20, 340))
 
 def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con = get_connection()
@@ -835,7 +835,7 @@ def render_top_players_list(df):
     <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
     </body></html>
     """
-    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)
+    st.iframe(html, height=min(58 * len(df) + 20, 340))
 
 
 def get_top_wr_season_yards(season: int, min_targets: int = 30):
@@ -1539,7 +1539,7 @@ def render_recent_games_list(df):
     <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
     </body></html>
     """
-    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)	
+    st.iframe(html, height=min(58 * len(df) + 20, 340))	
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
