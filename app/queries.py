@@ -55,11 +55,6 @@ def get_team_epa_offense_defense(season: int):
     return df
 
 
-def get_all_teams():
-    con = get_connection()
-    df = con.execute("SELECT team_abbr, team_name FROM teams ORDER BY team_name").fetchdf()
-    con.close()
-    return df
 
 
 def get_team_epa_by_week(team: str, season: int):
@@ -184,7 +179,7 @@ def get_top_rb_week(season: int, week: int, min_carries: int = 5):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.week = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -203,7 +198,7 @@ def get_top_wr_week(season: int, week: int, min_targets: int = 3):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.week = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -657,7 +652,7 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
                SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -676,7 +671,7 @@ def get_top_wr_season_yards(season: int, min_targets: int = 30):
                SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -733,7 +728,7 @@ def get_top_rb_season_epa(season: int, min_carries: int = 50):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -752,7 +747,7 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -789,7 +784,7 @@ def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
                SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -808,7 +803,7 @@ def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
                SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -1119,7 +1114,7 @@ def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -1138,7 +1133,7 @@ def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
         WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
@@ -1256,6 +1251,121 @@ def get_rank_label(df_rankings, player_id: str, metric_col: str):
     rang = idx[0] + 1
     total = len(df_sorted)
     return f"#{rang} / {total}"
+
+def get_home_current_season():
+    """Saison la plus récente ayant au moins un match joué (évite de
+    pointer sur une saison à venir sans résultats, comme 2026 mi-année)."""
+    con = get_connection()
+    query = """
+        SELECT MAX(season) AS season FROM games
+        WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+    """
+    df = con.execute(query).fetchdf()
+    con.close()
+    return int(df["season"].iloc[0])
+
+
+def get_home_top_teams(season: int, limit: int = 5):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, AVG(epa) AS epa_offense
+        FROM plays
+        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY epa_offense DESC
+        LIMIT ?
+    """
+    df = con.execute(query, [season, limit]).fetchdf()
+    con.close()
+    return df
+
+
+def get_home_recent_games(season: int, limit: int = 5):
+    con = get_connection()
+    query = """
+        SELECT week, gameday, home_team, away_team, home_score, away_score
+        FROM games
+        WHERE season = ? AND home_score IS NOT NULL AND away_score IS NOT NULL
+        ORDER BY gameday DESC
+        LIMIT ?
+    """
+    df = con.execute(query, [season, limit]).fetchdf()
+    con.close()
+    return df
+
+
+def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for i, row in df.reset_index(drop=True).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        valeur = row[metric_col]
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:24px;height:24px;border-radius:50%;background:{couleur};color:white;
+                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">{i+1}</div>
+            <img src="{logo}" height="28">
+            <div style="flex:1;font-weight:600;color:#1E293B;">{team}</div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;">{valeur:.{decimals}f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    components.html(html, height=min(60 * len(df) + 20, 360), scrolling=False)
+
+
+def render_recent_games_list(df):
+    if df.empty:
+        st.info("Aucun match disponible.")
+        return
+
+    logos = get_team_logos()
+
+    rows_html = ""
+    for _, row in df.iterrows():
+        home_logo = logos.get(row["home_team"], "")
+        away_logo = logos.get(row["away_team"], "")
+        rows_html += f"""
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="font-size:12px;color:#94A3B8;width:40px;">S{int(row['week'])}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
+                <span style="font-weight:600;color:#1E293B;">{row['away_team']}</span>
+                <img src="{away_logo}" height="22">
+            </div>
+            <div style="font-weight:800;font-size:16px;color:#1E293B;padding:0 16px;font-family:'Space Mono',monospace;">
+                {int(row['away_score'])} – {int(row['home_score'])}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex:1;">
+                <img src="{home_logo}" height="22">
+                <span style="font-weight:600;color:#1E293B;">{row['home_team']}</span>
+            </div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)	
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
