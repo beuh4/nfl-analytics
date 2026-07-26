@@ -1050,30 +1050,24 @@ def render_podium(df, metric_col, decimals=3):
     """
     components.html(html, height=320, scrolling=False)
 
-def get_all_teams_records(season: int):
-    """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
-    la table games (un match compte pour les deux équipes via UNION ALL)."""
+def get_all_teams():
+    """Seules les 32 équipes actives sont retenues : celles ayant joué lors
+    de la saison la plus récente en base. Filtre les franchises historiques
+    (ex. St. Louis Rams, Oakland Raiders) qui existent dans le référentiel
+    teams mais n'ont plus joué sous ce nom depuis leur déménagement."""
     con = get_connection()
     query = """
-        WITH normalized AS (
-            SELECT home_team AS team, home_score AS team_score, away_score AS opp_score
-            FROM games WHERE season = ?
-            UNION ALL
-            SELECT away_team AS team, away_score AS team_score, home_score AS opp_score
-            FROM games WHERE season = ?
+        WITH equipes_actives AS (
+            SELECT DISTINCT posteam AS team_abbr FROM plays
+            WHERE season = (SELECT MAX(season) FROM plays)
         )
-        SELECT team,
-            SUM(CASE WHEN team_score > opp_score THEN 1 ELSE 0 END) AS wins,
-            SUM(CASE WHEN team_score < opp_score THEN 1 ELSE 0 END) AS losses,
-            SUM(CASE WHEN team_score = opp_score THEN 1 ELSE 0 END) AS ties
-        FROM normalized
-        WHERE team_score IS NOT NULL AND opp_score IS NOT NULL
-        GROUP BY team
+        SELECT t.team_abbr, t.team_name
+        FROM teams t
+        JOIN equipes_actives e ON t.team_abbr = e.team_abbr
+        ORDER BY t.team_name
     """
-    df = con.execute(query, [season, season]).fetchdf()
+    df = con.execute(query).fetchdf()
     con.close()
-    total = df["wins"] + df["losses"] + df["ties"]
-    df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
     return df
 
 

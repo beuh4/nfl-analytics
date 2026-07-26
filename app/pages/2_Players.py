@@ -217,7 +217,7 @@ if roles_actifs:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
     fig.update_xaxes(dtick=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"epa_trend_{player_id}_{season}")
 
 # ─── Tendance défensive — semaine par semaine ───
 if a_stats_defensives:
@@ -231,7 +231,7 @@ if a_stats_defensives:
     ))
     fig_def.update_layout(xaxis_title="Semaine", yaxis_title="Actions défensives", height=400)
     fig_def.update_xaxes(dtick=1)
-    st.plotly_chart(fig_def, use_container_width=True)
+    st.plotly_chart(fig_def, use_container_width=True, key=f"defense_trend_{player_id}_{season}")
 
 if not roles_actifs and not a_stats_defensives:
     st.info("Aucune donnée hebdomadaire disponible.")
@@ -249,4 +249,4 @@ else:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
     fig.update_xaxes(dtick=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_def, use_container_width=True, key=f"defense_trend_{player_id}_{season}")
