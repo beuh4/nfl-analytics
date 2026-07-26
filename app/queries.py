@@ -1028,6 +1028,9 @@ TRADUCTIONS_COLONNES = {
     "depart": "Départ",
     "possession": "Possession",
     "score_marque": "Score Marqué",
+    "points_marques": "Points Marqués",
+    "score_domicile": "Score Domicile",
+    "score_exterieur": "Score Extérieur",
 }
 
 
@@ -1326,19 +1329,42 @@ def get_game_score_progression(game_id: str):
 def get_game_drives(game_id: str):
     con = get_connection()
     query = """
-        SELECT drive, ANY_VALUE(posteam) AS team,
-               MAX(drive_play_count) AS plays,
-               ANY_VALUE(fixed_drive_result) AS resultat,
-               ANY_VALUE(drive_start_yard_line) AS depart,
-               ANY_VALUE(drive_time_of_possession) AS possession,
-               ANY_VALUE(drive_ended_with_score) AS score_marque
-        FROM plays
-        WHERE game_id = ? AND drive IS NOT NULL
-        GROUP BY drive
-        ORDER BY drive
+        WITH bounds AS (
+            SELECT drive, ANY_VALUE(posteam) AS team,
+                   MAX(drive_play_count) AS plays,
+                   ANY_VALUE(fixed_drive_result) AS resultat,
+                   ANY_VALUE(drive_start_yard_line) AS depart,
+                   ANY_VALUE(drive_time_of_possession) AS possession,
+                   MIN(play_id) AS first_play_id,
+                   MAX(play_id) AS last_play_id
+            FROM plays
+            WHERE game_id = ? AND drive IS NOT NULL
+            GROUP BY drive
+        )
+        SELECT b.drive, b.team, b.plays, b.resultat, b.depart, b.possession,
+               p_start.total_home_score AS home_avant, p_start.total_away_score AS away_avant,
+               p_end.total_home_score AS score_domicile, p_end.total_away_score AS score_exterieur
+        FROM bounds b
+        JOIN plays p_start ON p_start.game_id = ? AND p_start.play_id = b.first_play_id
+        JOIN plays p_end ON p_end.game_id = ? AND p_end.play_id = b.last_play_id
+        ORDER BY b.drive
     """
-    df = con.execute(query, [game_id]).fetchdf()
+    df = con.execute(query, [game_id, game_id, game_id]).fetchdf()
     con.close()
+
+    if not df.empty:
+        # Points marqués sur ce drive = variation du total de points (les deux
+        # équipes confondues) entre le début et la fin du drive — fonctionne
+        # même en cas de score défensif (pick-six, etc.).
+        df["points_marques"] = (
+            (df["score_domicile"] + df["score_exterieur"])
+            - (df["home_avant"] + df["away_avant"])
+        ).fillna(0).astype(int)
+        df["plays"] = df["plays"].fillna(0).astype(int)
+        df["score_domicile"] = df["score_domicile"].fillna(0).astype(int)
+        df["score_exterieur"] = df["score_exterieur"].fillna(0).astype(int)
+        df = df.drop(columns=["home_avant", "away_avant"])
+
     return df
 
 

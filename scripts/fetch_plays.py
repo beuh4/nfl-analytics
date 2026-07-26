@@ -47,6 +47,7 @@ COLONNES_PLAYS = [
     "drive", "drive_play_count", "fixed_drive_result",
     "drive_start_yard_line", "drive_time_of_possession",
     "drive_ended_with_score", "drive_inside20",
+    "total_home_score", "total_away_score",
 ]
 
 COLONNES_PLAYS = list(dict.fromkeys(COLONNES_PLAYS))
