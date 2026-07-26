@@ -1218,6 +1218,31 @@ def get_wr_full_rankings(season: int, min_targets: int = 30):
     con.close()
     return df
 
+def get_all_teams_records(season: int):
+    """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
+    la table games (un match compte pour les deux équipes via UNION ALL)."""
+    con = get_connection()
+    query = """
+        WITH normalized AS (
+            SELECT home_team AS team, home_score AS team_score, away_score AS opp_score
+            FROM games WHERE season = ?
+            UNION ALL
+            SELECT away_team AS team, away_score AS team_score, home_score AS opp_score
+            FROM games WHERE season = ?
+        )
+        SELECT team,
+            SUM(CASE WHEN team_score > opp_score THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN team_score < opp_score THEN 1 ELSE 0 END) AS losses,
+            SUM(CASE WHEN team_score = opp_score THEN 1 ELSE 0 END) AS ties
+        FROM normalized
+        WHERE team_score IS NOT NULL AND opp_score IS NOT NULL
+        GROUP BY team
+    """
+    df = con.execute(query, [season, season]).fetchdf()
+    con.close()
+    total = df["wins"] + df["losses"] + df["ties"]
+    df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
+    return df
 
 def get_rank_label(df_rankings, player_id: str, metric_col: str):
     """Retourne '#3 / 24' si le joueur est qualifié pour ce classement,
