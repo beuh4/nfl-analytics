@@ -645,6 +645,104 @@ def get_player_weekly_trend(player_id: str, season: int, role: str):
     con.close()
     return df
 
+def get_home_top_players(season: int, limit: int = 5):
+    """Top joueurs offensifs tous postes confondus, classés par EPA/play —
+    seule métrique directement comparable entre QB, RB et WR."""
+    con = get_connection()
+    query = """
+        WITH qb AS (
+            SELECT p.passer_player_name AS player, p.posteam AS team, 'QB' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+            GROUP BY p.passer_player_name, p.posteam
+            HAVING COUNT(*) >= 100
+        ),
+        rb AS (
+            SELECT p.rusher_player_name AS player, p.posteam AS team, 'RB' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+            GROUP BY p.rusher_player_name, p.posteam
+            HAVING COUNT(*) >= 50
+        ),
+        wr AS (
+            SELECT p.receiver_player_name AS player, p.posteam AS team, 'WR' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+            GROUP BY p.receiver_player_name, p.posteam
+            HAVING COUNT(*) >= 30
+        )
+        SELECT * FROM qb
+        UNION ALL SELECT * FROM rb
+        UNION ALL SELECT * FROM wr
+        ORDER BY epa_per_play DESC
+        LIMIT ?
+    """
+    df = con.execute(query, [season, season, season, limit]).fetchdf()
+    con.close()
+    return df
+
+
+def render_top_players_list(df):
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for i, row in df.reset_index(drop=True).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        photo = row.get("photo_url")
+        nom = row["player"]
+        position = row["position"]
+        valeur = row["epa_per_play"]
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:32px;height:32px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:32px;height:32px;border-radius:50%;background:{couleur};color:white;'
+                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">{initiales}</div>'
+            )
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:22px;height:22px;border-radius:50%;background:{couleur};color:white;
+                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">{i+1}</div>
+            {avatar}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
+                <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;">
+                    <img src="{logo}" height="12">{team} · {position}
+                </div>
+            </div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{valeur:.3f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)
+
 def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con = get_connection()
     query = """
@@ -663,6 +761,103 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con.close()
     return df
 
+def get_home_top_players(season: int, limit: int = 5):
+    """Top joueurs offensifs tous postes confondus, classés par EPA/play —
+    seule métrique directement comparable entre QB, RB et WR."""
+    con = get_connection()
+    query = """
+        WITH qb AS (
+            SELECT p.passer_player_name AS player, p.posteam AS team, 'QB' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+            GROUP BY p.passer_player_name, p.posteam
+            HAVING COUNT(*) >= 100
+        ),
+        rb AS (
+            SELECT p.rusher_player_name AS player, p.posteam AS team, 'RB' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+            GROUP BY p.rusher_player_name, p.posteam
+            HAVING COUNT(*) >= 50
+        ),
+        wr AS (
+            SELECT p.receiver_player_name AS player, p.posteam AS team, 'WR' AS position,
+                   AVG(p.epa) AS epa_per_play, ANY_VALUE(r.headshot_url) AS photo_url
+            FROM plays p
+            LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+            GROUP BY p.receiver_player_name, p.posteam
+            HAVING COUNT(*) >= 30
+        )
+        SELECT * FROM qb
+        UNION ALL SELECT * FROM rb
+        UNION ALL SELECT * FROM wr
+        ORDER BY epa_per_play DESC
+        LIMIT ?
+    """
+    df = con.execute(query, [season, season, season, limit]).fetchdf()
+    con.close()
+    return df
+
+
+def render_top_players_list(df):
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for i, row in df.reset_index(drop=True).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        photo = row.get("photo_url")
+        nom = row["player"]
+        position = row["position"]
+        valeur = row["epa_per_play"]
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:32px;height:32px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:32px;height:32px;border-radius:50%;background:{couleur};color:white;'
+                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">{initiales}</div>'
+            )
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:22px;height:22px;border-radius:50%;background:{couleur};color:white;
+                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">{i+1}</div>
+            {avatar}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
+                <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;">
+                    <img src="{logo}" height="12">{team} · {position}
+                </div>
+            </div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{valeur:.3f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    components.html(html, height=min(58 * len(df) + 20, 340), scrolling=False)
 
 def get_top_wr_season_yards(season: int, min_targets: int = 30):
     con = get_connection()
