@@ -89,11 +89,36 @@ with col_home:
     </div>
     """, unsafe_allow_html=True)
 
+def info_bloc(label, valeur):
+    return f"""
+    <div style="text-align:center;">
+        <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;">{label}</div>
+        <div style="font-size:15px;font-weight:600;color:#1E293B;margin-top:2px;">{valeur}</div>
+    </div>
+    """
+
+stade = info["stadium"] if isinstance(info["stadium"], str) else "—"
+surface = info["surface"] if isinstance(info["surface"], str) else "—"
+
+if info["temp"] == info["temp"]:
+    temp_f = info["temp"]
+    temp_c = round((temp_f - 32) * 5 / 9)
+    meteo = f"{temp_c}°C <span style='font-size:11px;color:#94A3B8;'>({int(temp_f)}°F)</span>"
+else:
+    meteo = "—"
+
+prolongation = "Oui" if info["overtime"] == 1 else "Non"
+
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Stade", info["stadium"] if isinstance(info["stadium"], str) else "—")
-col2.metric("Surface", info["surface"] if isinstance(info["surface"], str) else "—")
-col3.metric("Météo", f"{int(info['temp'])}°F" if info["temp"] == info["temp"] else "—")
-col4.metric("Prolongation", "Oui" if info["overtime"] == 1 else "Non")
+with col1:
+    st.markdown(info_bloc("Stade", stade), unsafe_allow_html=True)
+with col2:
+    st.markdown(info_bloc("Surface", surface), unsafe_allow_html=True)
+with col3:
+    st.markdown(info_bloc("Météo", meteo), unsafe_allow_html=True)
+with col4:
+    st.markdown(info_bloc("Prolongation", prolongation), unsafe_allow_html=True)
+
 
 st.divider()
 
