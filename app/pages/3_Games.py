@@ -7,8 +7,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import (
     get_available_seasons, get_weeks_for_season, get_games_for_week, get_game_info,
     get_team_colors, get_team_logos, get_game_win_probability, get_game_epa_cumulative,
-    get_game_score_progression, get_game_drives, get_game_top_performer,
-    get_game_play_by_play, style_dataframe, render_table,
+    get_game_score_progression, get_game_drives, get_game_top_performer, get_game_play_by_play,
+    render_game_performers, traduire_surface, style_dataframe, render_table,
 )
 
 st.set_page_config(page_title="Games", layout="wide")
@@ -98,7 +98,7 @@ def info_bloc(label, valeur):
     """
 
 stade = info["stadium"] if isinstance(info["stadium"], str) else "—"
-surface = info["surface"] if isinstance(info["surface"], str) else "—"
+surface = traduire_surface(info["surface"])
 
 if info["temp"] == info["temp"]:
     temp_f = info["temp"]

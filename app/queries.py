@@ -1342,24 +1342,27 @@ def get_game_drives(game_id: str):
     return df
 
 
-def get_game_top_performer(game_id: str, team: str, role: str):
+def get_game_top_performer(game_id: str, team: str, season: int, role: str):
     """role : 'passing', 'rushing' ou 'receiving'."""
     con = get_connection()
     colonnes = {
-        "passing": ("passer_player_name", "passer_player_id", "passing_yards", "qb_dropback = 1"),
-        "rushing": ("rusher_player_name", "rusher_player_id", "rushing_yards", "rush = 1"),
-        "receiving": ("receiver_player_name", "receiver_player_id", "receiving_yards", "pass = 1"),
+        "passing": ("passer_player_name", "passer_player_id", "passing_yards", "qb_dropback = 1", "QB"),
+        "rushing": ("rusher_player_name", "rusher_player_id", "rushing_yards", "rush = 1", "RB"),
+        "receiving": ("receiver_player_name", "receiver_player_id", "receiving_yards", "pass = 1", "REC"),
     }
-    nom_col, id_col, yards_col, filtre = colonnes[role]
+    nom_col, id_col, yards_col, filtre, poste_defaut = colonnes[role]
     query = f"""
-        SELECT {nom_col} AS player, SUM({yards_col}) AS yards, ROUND(AVG(epa), 3) AS epa_per_play
-        FROM plays
-        WHERE game_id = ? AND posteam = ? AND {filtre} AND {id_col} IS NOT NULL
-        GROUP BY {nom_col}
+        SELECT p.{nom_col} AS player, SUM(p.{yards_col}) AS yards, ROUND(AVG(p.epa), 3) AS epa_per_play,
+               ANY_VALUE(r.headshot_url) AS photo_url,
+               COALESCE(ANY_VALUE(r.position), '{poste_defaut}') AS position
+        FROM plays p
+        LEFT JOIN rosters r ON p.{id_col} = r.player_id AND r.season = ?
+        WHERE p.game_id = ? AND p.posteam = ? AND p.{filtre} AND p.{id_col} IS NOT NULL
+        GROUP BY p.{nom_col}
         ORDER BY yards DESC
         LIMIT 1
     """
-    df = con.execute(query, [game_id, team]).fetchdf()
+    df = con.execute(query, [season, game_id, team]).fetchdf()
     con.close()
     return df
 
@@ -1425,6 +1428,22 @@ def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
     con.close()
     return df
 
+TRADUCTION_SURFACE = {
+    "grass": "Pelouse naturelle",
+    "fieldturf": "Gazon synthétique (FieldTurf)",
+    "turf": "Gazon synthétique",
+    "astroturf": "Gazon synthétique (AstroTurf)",
+    "sportturf": "Gazon synthétique (SportTurf)",
+    "matrixturf": "Gazon synthétique (MatrixTurf)",
+    "a_turf": "Gazon synthétique",
+    "dessograss": "Pelouse hybride (Desso GrassMaster)",
+}
+
+
+def traduire_surface(valeur: str) -> str:
+    if not isinstance(valeur, str):
+        return "—"
+    return TRADUCTION_SURFACE.get(valeur.lower(), valeur.capitalize())
 
 def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
     con = get_connection()
@@ -1685,6 +1704,60 @@ def render_recent_games_list(df):
     </body></html>
     """
     st.iframe(html, height=min(58 * len(df) + 20, 340))	
+
+
+def render_game_performers(performers: list, couleur_equipe: str):
+    """performers : liste de (label_role, dataframe) pour une équipe."""
+    rows_html = ""
+    for label, df in performers:
+        if df.empty:
+            continue
+        row = df.iloc[0]
+        photo = row.get("photo_url")
+        nom = row["player"]
+        position = row["position"]
+        yards = int(row["yards"]) if row["yards"] == row["yards"] else 0
+        epa = row["epa_per_play"]
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:36px;height:36px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur_equipe};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:36px;height:36px;border-radius:50%;background:{couleur_equipe};color:white;'
+                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initiales}</div>'
+            )
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #E2E8F0;">
+            {avatar}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>
+                <div style="font-size:11px;color:#64748B;">{position} · {label}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-weight:800;color:{couleur_equipe};font-family:'Space Mono',monospace;font-size:14px;">{yards} yds</div>
+                <div style="font-size:11px;color:#64748B;">EPA {epa:.3f}</div>
+            </div>
+        </div>
+        """
+
+    if not rows_html:
+        rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=190)
+
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
