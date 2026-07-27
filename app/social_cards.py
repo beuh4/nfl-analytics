@@ -31,6 +31,12 @@ def _charger_image_url(url, taille=None):
     except Exception:
         return None
 
+
+def _hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+
 def _cercle_net(img, diametre):
     """Découpe un cercle net et anti-aliasé, cadré sans déformation.
     Supersampling 4x avant downscale : évite les bords crénelés d'un
@@ -49,13 +55,34 @@ def _cercle_net(img, diametre):
 
     return img_cadree.resize((diametre, diametre), Image.LANCZOS)
 
-def _hex_to_rgb(hex_color):
-    hex_color = hex_color.lstrip("#")
-    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+def _dessiner_badge_rang(draw, centre, rang, rayon=48):
+    x, y = centre
+    draw.ellipse((x - rayon, y - rayon, x + rayon, y + rayon), fill=(15, 23, 42))
+    police = _charger_police(int(rayon * 0.9), gras=True)
+    draw.text((x, y), f"#{rang}", font=police, fill="white", anchor="mm")
+
+
+def _dessiner_badge_evolution(draw, centre, evolution, rayon=42):
+    x, y = centre
+
+    if evolution is None or evolution != evolution:
+        couleur, texte = (100, 116, 139), "NEW"
+    elif evolution > 0:
+        couleur, texte = (22, 163, 74), f"▲{int(evolution)}"
+    elif evolution < 0:
+        couleur, texte = (220, 38, 38), f"▼{int(abs(evolution))}"
+    else:
+        couleur, texte = (100, 116, 139), "–"
+
+    draw.ellipse((x - rayon, y - rayon, x + rayon, y + rayon), fill=couleur)
+    taille_police = 24 if len(texte) > 3 else 28
+    police = _charger_police(taille_police, gras=True)
+    draw.text((x, y), texte, font=police, fill="white", anchor="mm")
 
 
 def generer_carte_joueur(nom, poste, team_abbr, team_color, logo_url, photo_url,
-                          stat_label, stat_value):
+                          stat_label, stat_value, rang=None, evolution=None):
     couleur_rgb = _hex_to_rgb(team_color)
     img = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), couleur_rgb)
     draw = ImageDraw.Draw(img)
@@ -71,6 +98,11 @@ def generer_carte_joueur(nom, poste, team_abbr, team_color, logo_url, photo_url,
     if photo_brute:
         photo = _cercle_net(photo_brute, 420)
         img.paste(photo, (330, 140), photo)
+
+    if rang is not None:
+        _dessiner_badge_rang(draw, (110, 110), rang)
+    if evolution is not None or rang is not None:
+        _dessiner_badge_evolution(draw, (110, 210), evolution)
 
     police_titre = _charger_police(64, gras=True)
     police_sous = _charger_police(36)
@@ -89,7 +121,8 @@ def generer_carte_joueur(nom, poste, team_abbr, team_color, logo_url, photo_url,
     return img
 
 
-def generer_carte_equipe(team_name, season, team_color, logo_url, rang_off, epa_off, rang_def, epa_def):
+def generer_carte_equipe(team_name, season, team_color, logo_url, rang_off, epa_off,
+                          rang_def, epa_def, rang_semaine=None, evolution_semaine=None):
     img = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), (15, 23, 42))
     draw = ImageDraw.Draw(img)
 
@@ -98,6 +131,11 @@ def generer_carte_equipe(team_name, season, team_color, logo_url, rang_off, epa_
     logo = _charger_image_url(logo_url, (320, 320))
     if logo:
         img.paste(logo, (CANVAS_SIZE // 2 - 160, 160), logo)
+
+    if rang_semaine is not None:
+        _dessiner_badge_rang(draw, (110, 150), rang_semaine)
+    if evolution_semaine is not None or rang_semaine is not None:
+        _dessiner_badge_evolution(draw, (110, 250), evolution_semaine)
 
     police_titre = _charger_police(70, gras=True)
     police_label = _charger_police(30)
