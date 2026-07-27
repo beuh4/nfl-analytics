@@ -1287,7 +1287,7 @@ def get_team_epa_rank_week(season: int, week: int):
     con.close()
     if df.empty:
         return df
-    df = df.sort_values("epa_offense", ascending=False).reset_index(drop=True)
+    df = df.sort_values(["epa_offense", "team"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = df.index + 1
     return df
 
@@ -1325,7 +1325,7 @@ def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int =
     con.close()
     if df.empty:
         return df
-    df = df.sort_values("epa_per_play", ascending=False).reset_index(drop=True)
+    df = df.sort_values(["epa_per_play", "player_id"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = df.index + 1
     return df
 

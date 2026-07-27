@@ -38,7 +38,7 @@ if type_carte == "Joueur":
         st.stop()
 
     options = [f"#{int(r['rank'])} — {r['player']} ({r['team']})" for _, r in classement.iterrows()]
-    choix = st.selectbox("Joueur", options)
+    choix = st.selectbox("Joueur", options, key=f"joueur_select_{season}_{week}_{role}")
     idx = options.index(choix)
     ligne = classement.iloc[idx]
 
