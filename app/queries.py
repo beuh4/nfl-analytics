@@ -1275,6 +1275,124 @@ def get_game_info(game_id: str):
     con.close()
     return df
 
+def get_team_epa_rank_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, AVG(epa) AS epa_offense
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    if df.empty:
+        return df
+    df = df.sort_values("epa_offense", ascending=False).reset_index(drop=True)
+    df["rank"] = df.index + 1
+    return df
+
+
+def get_team_weekly_movement(season: int, week: int):
+    """Classement EPA offensif de la semaine, avec évolution de rang vs
+    la semaine précédente de la même saison."""
+    current = get_team_epa_rank_week(season, week)
+    if current.empty:
+        return current
+    prev_map = {}
+    if week > 1:
+        previous = get_team_epa_rank_week(season, week - 1)
+        if not previous.empty:
+            prev_map = dict(zip(previous["team"], previous["rank"]))
+    current["rank_precedent"] = current["team"].map(prev_map)
+    current["evolution"] = current["rank_precedent"] - current["rank"]
+    return current
+
+
+def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int = 5):
+    con = get_connection()
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    nom_col = {"passing": "passer_player_name", "rushing": "rusher_player_name", "receiving": "receiver_player_name"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    query = f"""
+        SELECT {colonne_id} AS player_id, ANY_VALUE({nom_col}) AS player, ANY_VALUE(posteam) AS team,
+               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
+        FROM plays
+        WHERE season = ? AND week = ? AND {filtre} AND {colonne_id} IS NOT NULL
+        GROUP BY {colonne_id}
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, week, min_plays]).fetchdf()
+    con.close()
+    if df.empty:
+        return df
+    df = df.sort_values("epa_per_play", ascending=False).reset_index(drop=True)
+    df["rank"] = df.index + 1
+    return df
+
+
+def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int = 5):
+    current = get_player_epa_rank_week(season, week, role, min_plays)
+    if current.empty:
+        return current
+    prev_map = {}
+    if week > 1:
+        previous = get_player_epa_rank_week(season, week - 1, role, min_plays)
+        if not previous.empty:
+            prev_map = dict(zip(previous["player_id"], previous["rank"]))
+    current["rank_precedent"] = current["player_id"].map(prev_map)
+    current["evolution"] = current["rank_precedent"] - current["rank"]
+    return current
+
+
+def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
+    """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
+    classé la semaine d'avant (nouveau qualifié ou retour de blessure)."""
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for _, row in df.head(10).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        rang = int(row["rank"])
+        valeur = row[value_col]
+        evolution = row.get("evolution")
+
+        if evolution != evolution:
+            badge = '<span style="color:#94A3B8;font-size:11px;font-weight:700;">NEW</span>'
+        elif evolution > 0:
+            badge = f'<span style="color:#16A34A;font-size:12px;font-weight:700;">▲ {int(evolution)}</span>'
+        elif evolution < 0:
+            badge = f'<span style="color:#DC2626;font-size:12px;font-weight:700;">▼ {int(abs(evolution))}</span>'
+        else:
+            badge = '<span style="color:#94A3B8;font-size:12px;">–</span>'
+
+        nom_affiche = f"{row['player']} · {team}" if is_player else team
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:20px;font-weight:800;color:{couleur};font-size:14px;">{rang}</div>
+            <img src="{logo}" height="20">
+            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>
+            <div style="width:44px;text-align:center;">{badge}</div>
+            <div style="width:60px;text-align:right;font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:13px;">{valeur:.{decimals}f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
 
 def get_game_win_probability(game_id: str):
     """Win probability du point de vue de l'équipe à domicile, reconstruite

@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import requests
 from io import BytesIO
 
@@ -31,6 +31,23 @@ def _charger_image_url(url, taille=None):
     except Exception:
         return None
 
+def _cercle_net(img, diametre):
+    """Découpe un cercle net et anti-aliasé, cadré sans déformation.
+    Supersampling 4x avant downscale : évite les bords crénelés d'un
+    masque tracé directement à la taille finale."""
+    facteur = 4
+    taille_super = diametre * facteur
+
+    img_cadree = ImageOps.fit(
+        img.convert("RGB"), (taille_super, taille_super),
+        method=Image.LANCZOS, centering=(0.5, 0.35),
+    ).convert("RGBA")
+
+    mask = Image.new("L", (taille_super, taille_super), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, taille_super, taille_super), fill=255)
+    img_cadree.putalpha(mask)
+
+    return img_cadree.resize((diametre, diametre), Image.LANCZOS)
 
 def _hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip("#")
@@ -50,11 +67,10 @@ def generer_carte_joueur(nom, poste, team_abbr, team_color, logo_url, photo_url,
     if logo:
         img.paste(logo, (CANVAS_SIZE - 180, 60), logo)
 
-    photo = _charger_image_url(photo_url, (420, 420))
-    if photo:
-        mask = Image.new("L", (420, 420), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, 420, 420), fill=255)
-        img.paste(photo, (330, 140), mask)
+    photo_brute = _charger_image_url(photo_url)
+    if photo_brute:
+        photo = _cercle_net(photo_brute, 420)
+        img.paste(photo, (330, 140), photo)
 
     police_titre = _charger_police(64, gras=True)
     police_sous = _charger_police(36)

@@ -10,6 +10,7 @@ from queries import (
     get_explosive_plays_week, get_turnover_battle_week, get_pressure_leaders_week,
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_teams_offense_yards_season, get_top_qb_season_epa, get_top_rb_season_epa,
+    get_team_weekly_movement, get_player_weekly_movement, render_ranking_with_movement,
     get_top_wr_season_epa, get_team_epa_offense_defense,
 )
 
@@ -77,6 +78,26 @@ with onglet_semaine:
         if season < 2023:
             st.caption("Donnée de pression partiellement disponible avant 2023.")
         render_table(style_dataframe(get_pressure_leaders_week(season, week)))
+
+    st.divider()
+    st.subheader("Classement de la semaine — avec évolution")
+    st.caption("▲ progression / ▼ recul vs semaine précédente · classé par EPA")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Équipes — EPA Offensif**")
+        render_ranking_with_movement(get_team_weekly_movement(season, week), value_col="epa_offense")
+    with col2:
+        st.write("**QB — EPA/Dropback**")
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "passing"), value_col="epa_per_play", is_player=True)
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.write("**RB — EPA/Course**")
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "rushing"), value_col="epa_per_play", is_player=True)
+    with col4:
+        st.write("**Receveurs — EPA/Cible**")
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "receiving"), value_col="epa_per_play", is_player=True)
 
 with onglet_saison:
     season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="rank_season_season")
