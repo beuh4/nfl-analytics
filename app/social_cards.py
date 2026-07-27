@@ -67,18 +67,42 @@ def _dessiner_badge_evolution(draw, centre, evolution, rayon=42):
     x, y = centre
 
     if evolution is None or evolution != evolution:
-        couleur, texte = (100, 116, 139), "NEW"
-    elif evolution > 0:
-        couleur, texte = (22, 163, 74), f"▲{int(evolution)}"
-    elif evolution < 0:
-        couleur, texte = (220, 38, 38), f"▼{int(abs(evolution))}"
-    else:
-        couleur, texte = (100, 116, 139), "–"
+        draw.ellipse((x - rayon, y - rayon, x + rayon, y + rayon), fill=(100, 116, 139))
+        police = _charger_police(20, gras=True)
+        draw.text((x, y), "NEW", font=police, fill="white", anchor="mm")
+        return
 
+    if evolution == 0:
+        draw.ellipse((x - rayon, y - rayon, x + rayon, y + rayon), fill=(100, 116, 139))
+        police = _charger_police(30, gras=True)
+        draw.text((x, y), "-", font=police, fill="white", anchor="mm")
+        return
+
+    monte = evolution > 0
+    couleur = (22, 163, 74) if monte else (220, 38, 38)
     draw.ellipse((x - rayon, y - rayon, x + rayon, y + rayon), fill=couleur)
-    taille_police = 24 if len(texte) > 3 else 28
-    police = _charger_police(taille_police, gras=True)
-    draw.text((x, y), texte, font=police, fill="white", anchor="mm")
+
+    # Triangle dessiné à la main : évite tout risque de glyphe manquant
+    # selon la police disponible sur le serveur.
+    tri_largeur, tri_hauteur = 13, 11
+    tri_centre_y = y - 14
+    if monte:
+        points = [
+            (x, tri_centre_y - tri_hauteur * 0.6),
+            (x - tri_largeur, tri_centre_y + tri_hauteur * 0.5),
+            (x + tri_largeur, tri_centre_y + tri_hauteur * 0.5),
+        ]
+    else:
+        points = [
+            (x, tri_centre_y + tri_hauteur * 0.6),
+            (x - tri_largeur, tri_centre_y - tri_hauteur * 0.5),
+            (x + tri_largeur, tri_centre_y - tri_hauteur * 0.5),
+        ]
+    draw.polygon(points, fill="white")
+
+    police = _charger_police(int(rayon * 0.55), gras=True)
+    draw.text((x, y + 16), str(int(abs(evolution))), font=police, fill="white", anchor="mm")
+
 
 
 def generer_carte_joueur(nom, poste, team_abbr, team_color, logo_url, photo_url,
