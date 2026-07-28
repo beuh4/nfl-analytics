@@ -4,18 +4,25 @@ from io import BytesIO
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from queries import (
     get_available_seasons, get_weeks_for_season, get_all_teams, get_team_colors, get_team_logos,
     get_team_epa_offense_defense, get_team_weekly_movement,
     get_player_weekly_movement, get_player_bio,
+    get_top_qb_week, get_top_rb_week, get_top_wr_week,
+    get_best_offense_week, get_best_defense_week,
+    get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
+    get_top_qb_season_epa, get_top_rb_season_epa, get_top_wr_season_epa,
+    get_top_teams_offense_yards_season,
 )
+from social_cards import generer_carte_joueur, generer_carte_equipe, generer_podium_image, _formatter_valeur
 from social_cards import generer_carte_joueur, generer_carte_equipe
 
 st.set_page_config(page_title="Social Cards", layout="wide")
 st.title("Générateur de visuels — Instagram")
 st.caption("Génère un visuel carré (1080×1080), avec rang et évolution vs semaine précédente.")
 
-type_carte = st.radio("Type de carte", ["Joueur", "Équipe"], horizontal=True)
+type_carte = st.radio("Type de carte", ["Joueur", "Équipe", "Podium"], horizontal=True)
 
 seasons = get_available_seasons()
 season = st.selectbox("Saison", seasons, index=len(seasons) - 1)
@@ -62,6 +69,71 @@ if type_carte == "Joueur":
         st.image(img, width=400)
         st.download_button("Télécharger le PNG", buffer.getvalue(),
                             file_name=f"{bio['player_name'].replace(' ', '_')}_S{week}.png", mime="image/png")
+elif type_carte == "Podium":
+    portee = st.radio("Portée", ["Semaine", "Saison"], horizontal=True)
+
+    if portee == "Semaine":
+        weeks = get_weeks_for_season(season)
+        week = st.selectbox("Semaine", weeks, index=len(weeks) - 1)
+
+        categories = {
+            "Top 3 QB — EPA/Dropback": (get_top_qb_week(season, week), "epa_per_play", 3, False),
+            "Top 3 RB — EPA/Course": (get_top_rb_week(season, week), "epa_per_play", 3, False),
+            "Top 3 Receveurs — EPA/Cible": (get_top_wr_week(season, week), "epa_per_play", 3, False),
+            "Top 3 Attaques — EPA": (get_best_offense_week(season, week), "epa_offense", 3, True),
+            "Top 3 Défenses — EPA Concédé": (get_best_defense_week(season, week), "epa_allowed", 3, True),
+        }
+        libelle_periode = f"Semaine {week} — Saison {season}"
+
+    else:
+        categories = {
+            "Top 3 QB — Yards": (get_top_qb_season_yards(season), "yards", 0, False),
+            "Top 3 QB — EPA/Dropback": (get_top_qb_season_epa(season), "epa_per_play", 3, False),
+            "Top 3 RB — Yards": (get_top_rb_season_yards(season), "yards", 0, False),
+            "Top 3 RB — EPA/Course": (get_top_rb_season_epa(season), "epa_per_play", 3, False),
+            "Top 3 Receveurs — Yards": (get_top_wr_season_yards(season), "yards", 0, False),
+            "Top 3 Receveurs — EPA/Cible": (get_top_wr_season_epa(season), "epa_per_play", 3, False),
+            "Top 3 Équipes — Yards Offensifs": (get_top_teams_offense_yards_season(season), "yards", 0, True),
+        }
+        libelle_periode = f"Saison {season}"
+
+    nom_categorie = st.selectbox("Catégorie", list(categories.keys()))
+    df_categorie, colonne_valeur, decimales, est_equipe = categories[nom_categorie]
+
+    if df_categorie.empty:
+        st.warning("Aucune donnée disponible pour cette catégorie.")
+        st.stop()
+
+    df_categorie = df_categorie.head(3).reset_index(drop=True)
+
+    if st.button("Générer le podium"):
+        entries = []
+        for idx, row in df_categorie.iterrows():
+            team = row["team"]
+            entree = {
+                "rang": idx + 1,
+                "team_color": colors.get(team, "#374151"),
+                "logo_url": logos.get(team, ""),
+                "valeur": _formatter_valeur(row[colonne_valeur], decimales),
+            }
+            if est_equipe:
+                entree["nom"] = team
+                entree["sous_texte"] = ""
+            else:
+                entree["nom"] = row["player"]
+                entree["sous_texte"] = team
+                entree["photo_url"] = row.get("photo_url")
+            entries.append(entree)
+
+        img = generer_podium_image(entries, titre=nom_categorie, sous_titre=libelle_periode)
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        st.image(img, width=400)
+        st.download_button(
+            "Télécharger le PNG", buffer.getvalue(),
+            file_name=f"podium_{nom_categorie.replace(' ', '_').replace('—', '')}_{season}.png",
+            mime="image/png",
+        )
 
 else:
     teams_df = get_all_teams()
