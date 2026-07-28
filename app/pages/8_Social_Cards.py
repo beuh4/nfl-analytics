@@ -73,8 +73,7 @@ elif type_carte == "Podium":
     portee = st.radio("Portée", ["Semaine", "Saison"], horizontal=True)
 
     if portee == "Semaine":
-        weeks = get_weeks_for_season(season)
-        week = st.selectbox("Semaine", weeks, index=len(weeks) - 1)
+
 
         categories = {
             "Top 3 QB — EPA/Dropback": (get_top_qb_week(season, week), "epa_per_play", 3, False),
