@@ -101,7 +101,7 @@ elif type_carte == "Équipe":
     rang_def_saison = df_def[df_def["team"] == team_abbr].index[0] + 1
     epa_off_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_offense"].iloc[0]
     epa_def_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_defense"].iloc[0]
-
+    st.write(f"DEBUG — EPA Offense: {epa_off_saison} | EPA Défense: {epa_def_saison}")
     mouvement = get_team_weekly_movement(season, week)
     rang_semaine, evolution_semaine = None, None
     if not mouvement.empty and team_abbr in mouvement["team"].values:
