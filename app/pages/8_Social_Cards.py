@@ -4,39 +4,37 @@ from io import BytesIO
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from queries import (
     get_available_seasons, get_weeks_for_season, get_all_teams, get_team_colors, get_team_logos,
     get_team_epa_offense_defense, get_team_weekly_movement,
-    get_player_weekly_movement, get_player_bio,
-    get_top_qb_week, get_top_rb_week, get_top_wr_week,
-    get_best_offense_week, get_best_defense_week,
+    get_player_weekly_movement, get_player_bio, get_player_season_epa,
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_top_rb_season_epa, get_top_wr_season_epa,
-    get_player_season_epa, get_social_top_qb_week, get_social_top_rb_week, get_social_top_wr_week,
-    get_social_best_offense_week, get_social_best_defense_week,
     get_top_teams_offense_yards_season,
+    get_social_top_qb_week, get_social_top_rb_week, get_social_top_wr_week,
+    get_social_best_offense_week, get_social_best_defense_week,
 )
 from social_cards import generer_carte_joueur, generer_carte_equipe, generer_podium_image, _formatter_valeur
-from social_cards import generer_carte_joueur, generer_carte_equipe
 
 st.set_page_config(page_title="Social Cards", layout="wide")
 st.title("Générateur de visuels — Instagram")
 st.caption("Génère un visuel carré (1080×1080), avec rang et évolution vs semaine précédente.")
 
-type_carte = st.radio("Type de carte", ["Joueur", "Équipe", "Podium"], horizontal=True)
+type_carte = st.radio("Type de carte", ["Joueur", "Équipe", "Podium"], horizontal=True, key="type_carte_select")
 
 seasons = get_available_seasons()
-season = st.selectbox("Saison", seasons, index=len(seasons) - 1)
-
-weeks = get_weeks_for_season(season)
-week = st.selectbox("Semaine", weeks, index=len(weeks) - 1)
-
 colors = get_team_colors()
 logos = get_team_logos()
 
+# ─────────────────────────────────────────────────────────────
+# Carte Joueur
+# ─────────────────────────────────────────────────────────────
 if type_carte == "Joueur":
-    poste = st.radio("Poste", ["QB", "RB", "WR"], horizontal=True)
+    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="joueur_season")
+    weeks = get_weeks_for_season(season)
+    week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="joueur_week")
+
+    poste = st.radio("Poste", ["QB", "RB", "WR"], horizontal=True, key="joueur_poste")
     role_map = {"QB": "passing", "RB": "rushing", "WR": "receiving"}
     label_map = {"QB": "EPA/DROPBACK", "RB": "EPA/COURSE", "WR": "EPA/CIBLE"}
     role = role_map[poste]
@@ -58,14 +56,14 @@ if type_carte == "Joueur":
     bio = bio.iloc[0]
 
     evolution = ligne["evolution"] if ligne["rank_precedent"] == ligne["rank_precedent"] else None
-    
+
     season_stat = get_player_season_epa(ligne["player_id"], season, role)
     if not season_stat.empty and season_stat["epa_per_play"].iloc[0] == season_stat["epa_per_play"].iloc[0]:
         valeur_affichee = f"{season_stat['epa_per_play'].iloc[0]:.3f}"
     else:
         valeur_affichee = f"{ligne['epa_per_play']:.3f}"
 
-    if st.button("Générer le visuel"):
+    if st.button("Générer le visuel", key="generer_joueur"):
         img = generer_carte_joueur(
             nom=bio["player_name"], poste=bio["position"], team_abbr=ligne["team"],
             team_color=colors.get(ligne["team"], "#374151"), logo_url=logos.get(ligne["team"], ""),
@@ -76,12 +74,64 @@ if type_carte == "Joueur":
         img.save(buffer, format="PNG")
         st.image(img, width=400)
         st.download_button("Télécharger le PNG", buffer.getvalue(),
-                            file_name=f"{bio['player_name'].replace(' ', '_')}_S{week}.png", mime="image/png")
-elif type_carte == "Podium":
-    portee = st.radio("Portée", ["Semaine", "Saison"], horizontal=True)
+                            file_name=f"{bio['player_name'].replace(' ', '_')}_S{week}.png",
+                            mime="image/png", key="dl_joueur")
+
+# ─────────────────────────────────────────────────────────────
+# Carte Équipe
+# ─────────────────────────────────────────────────────────────
+elif type_carte == "Équipe":
+    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="equipe_season")
+    weeks = get_weeks_for_season(season)
+    week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="equipe_week")
+
+    teams_df = get_all_teams()
+    team_name = st.selectbox("Équipe", teams_df["team_name"], key="equipe_select")
+    team_abbr = teams_df[teams_df["team_name"] == team_name]["team_abbr"].iloc[0]
+
+    df_epa_saison = get_team_epa_offense_defense(season)
+    df_off = df_epa_saison.sort_values("epa_offense", ascending=False).reset_index(drop=True)
+    df_def = df_epa_saison.sort_values("epa_defense", ascending=True).reset_index(drop=True)
+
+    if team_abbr not in df_epa_saison["team"].values:
+        st.warning("Données indisponibles pour cette équipe/saison.")
+        st.stop()
+
+    rang_off_saison = df_off[df_off["team"] == team_abbr].index[0] + 1
+    rang_def_saison = df_def[df_def["team"] == team_abbr].index[0] + 1
+    epa_off_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_offense"].iloc[0]
+    epa_def_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_defense"].iloc[0]
+
+    mouvement = get_team_weekly_movement(season, week)
+    rang_semaine, evolution_semaine = None, None
+    if not mouvement.empty and team_abbr in mouvement["team"].values:
+        ligne_mvt = mouvement[mouvement["team"] == team_abbr].iloc[0]
+        rang_semaine = int(ligne_mvt["rank"])
+        evolution_semaine = ligne_mvt["evolution"] if ligne_mvt["rank_precedent"] == ligne_mvt["rank_precedent"] else None
+
+    if st.button("Générer le visuel", key="generer_equipe"):
+        img = generer_carte_equipe(
+            team_name=team_name, season=season, team_color=colors.get(team_abbr, "#374151"),
+            logo_url=logos.get(team_abbr, ""), rang_off=rang_off_saison, epa_off=epa_off_saison,
+            rang_def=rang_def_saison, epa_def=epa_def_saison,
+            rang_semaine=rang_semaine, evolution_semaine=evolution_semaine,
+        )
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        st.image(img, width=400)
+        st.download_button("Télécharger le PNG", buffer.getvalue(),
+                            file_name=f"{team_abbr}_S{week}.png", mime="image/png", key="dl_equipe")
+
+# ─────────────────────────────────────────────────────────────
+# Podium
+# ─────────────────────────────────────────────────────────────
+else:
+    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="podium_season")
+    portee = st.radio("Portée", ["Semaine", "Saison"], horizontal=True, key="podium_portee")
 
     if portee == "Semaine":
-
+        weeks = get_weeks_for_season(season)
+        week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="podium_week")
 
         categories = {
             "Top 3 QB — EPA/Dropback": (get_social_top_qb_week(season, week), "epa_per_play", 3, False),
@@ -91,7 +141,6 @@ elif type_carte == "Podium":
             "Top 3 Défenses — EPA Concédé": (get_social_best_defense_week(season, week), "epa_allowed", 3, True),
         }
         libelle_periode = f"Semaine {week} — Saison {season}"
-
     else:
         categories = {
             "Top 3 QB — Yards": (get_top_qb_season_yards(season), "yards", 0, False),
@@ -104,7 +153,7 @@ elif type_carte == "Podium":
         }
         libelle_periode = f"Saison {season}"
 
-    nom_categorie = st.selectbox("Catégorie", list(categories.keys()))
+    nom_categorie = st.selectbox("Catégorie", list(categories.keys()), key="podium_categorie")
     df_categorie, colonne_valeur, decimales, est_equipe = categories[nom_categorie]
 
     if df_categorie.empty:
@@ -113,7 +162,7 @@ elif type_carte == "Podium":
 
     df_categorie = df_categorie.head(3).reset_index(drop=True)
 
-    if st.button("Générer le podium"):
+    if st.button("Générer le podium", key="generer_podium"):
         entries = []
         for idx, row in df_categorie.iterrows():
             team = row["team"]
@@ -139,43 +188,5 @@ elif type_carte == "Podium":
         st.download_button(
             "Télécharger le PNG", buffer.getvalue(),
             file_name=f"podium_{nom_categorie.replace(' ', '_').replace('—', '')}_{season}.png",
-            mime="image/png",
+            mime="image/png", key="dl_podium",
         )
-
-else:
-    teams_df = get_all_teams()
-    team_name = st.selectbox("Équipe", teams_df["team_name"])
-    team_abbr = teams_df[teams_df["team_name"] == team_name]["team_abbr"].iloc[0]
-
-    df_epa_saison = get_team_epa_offense_defense(season)
-    df_off = df_epa_saison.sort_values("epa_offense", ascending=False).reset_index(drop=True)
-    df_def = df_epa_saison.sort_values("epa_defense", ascending=True).reset_index(drop=True)
-
-    if team_abbr not in df_epa_saison["team"].values:
-        st.warning("Données indisponibles pour cette équipe/saison.")
-        st.stop()
-
-    rang_off_saison = df_off[df_off["team"] == team_abbr].index[0] + 1
-    rang_def_saison = df_def[df_def["team"] == team_abbr].index[0] + 1
-    epa_off_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_offense"].iloc[0]
-    epa_def_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_defense"].iloc[0]
-
-    mouvement = get_team_weekly_movement(season, week)
-    rang_semaine, evolution_semaine = None, None
-    if not mouvement.empty and team_abbr in mouvement["team"].values:
-        ligne_mvt = mouvement[mouvement["team"] == team_abbr].iloc[0]
-        rang_semaine = int(ligne_mvt["rank"])
-        evolution_semaine = ligne_mvt["evolution"] if ligne_mvt["rank_precedent"] == ligne_mvt["rank_precedent"] else None
-
-    if st.button("Générer le visuel"):
-        img = generer_carte_equipe(
-            team_name=team_name, season=season, team_color=colors.get(team_abbr, "#374151"),
-            logo_url=logos.get(team_abbr, ""), rang_off=rang_off_saison, epa_off=epa_off_saison,
-            rang_def=rang_def_saison, epa_def=epa_def_saison,
-            rang_semaine=rang_semaine, evolution_semaine=evolution_semaine,
-        )
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        st.image(img, width=400)
-        st.download_button("Télécharger le PNG", buffer.getvalue(),
-                            file_name=f"{team_abbr}_S{week}.png", mime="image/png")
