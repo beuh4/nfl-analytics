@@ -1331,20 +1331,20 @@ def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10)
             GROUP BY passer_player_id, passer_player_name, posteam
             HAVING COUNT(*) >= ?
         ),
-        season AS (
+        cumul AS (
             SELECT passer_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
             FROM plays
-            WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            WHERE season = ? AND week <= ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
             GROUP BY passer_player_id
         )
-        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
         FROM weekly w
-        JOIN season s ON w.player_id = s.player_id
+        JOIN cumul c ON w.player_id = c.player_id
         LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
         ORDER BY w.epa_week DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_dropbacks_week, season, season]).fetchdf()
+    df = con.execute(query, [season, week, min_dropbacks_week, season, week, season]).fetchdf()
     con.close()
     return df
 
@@ -1360,20 +1360,20 @@ def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
             GROUP BY rusher_player_id, rusher_player_name, posteam
             HAVING COUNT(*) >= ?
         ),
-        season AS (
+        cumul AS (
             SELECT rusher_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
             FROM plays
-            WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            WHERE season = ? AND week <= ? AND rush = 1 AND rusher_player_id IS NOT NULL
             GROUP BY rusher_player_id
         )
-        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
         FROM weekly w
-        JOIN season s ON w.player_id = s.player_id
+        JOIN cumul c ON w.player_id = c.player_id
         LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
         ORDER BY w.epa_week DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_carries_week, season, season]).fetchdf()
+    df = con.execute(query, [season, week, min_carries_week, season, week, season]).fetchdf()
     con.close()
     return df
 
@@ -1389,20 +1389,20 @@ def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
             GROUP BY receiver_player_id, receiver_player_name, posteam
             HAVING COUNT(*) >= ?
         ),
-        season AS (
+        cumul AS (
             SELECT receiver_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
             FROM plays
-            WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            WHERE season = ? AND week <= ? AND pass = 1 AND receiver_player_id IS NOT NULL
             GROUP BY receiver_player_id
         )
-        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
         FROM weekly w
-        JOIN season s ON w.player_id = s.player_id
+        JOIN cumul c ON w.player_id = c.player_id
         LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
         ORDER BY w.epa_week DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_targets_week, season, season]).fetchdf()
+    df = con.execute(query, [season, week, min_targets_week, season, week, season]).fetchdf()
     con.close()
     return df
 
@@ -1416,21 +1416,45 @@ def get_social_best_offense_week(season: int, week: int):
             WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
             GROUP BY posteam
         ),
-        season AS (
+        cumul AS (
             SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense
             FROM plays
-            WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
             GROUP BY posteam
         )
-        SELECT w.team, s.epa_offense
-        FROM weekly w JOIN season s ON w.team = s.team
+        SELECT w.team, c.epa_offense
+        FROM weekly w JOIN cumul c ON w.team = c.team
         ORDER BY w.epa_week DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, season]).fetchdf()
+    df = con.execute(query, [season, week, season, week]).fetchdf()
     con.close()
     return df
 
+
+def get_social_best_defense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT defteam AS team, AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        ),
+        cumul AS (
+            SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        )
+        SELECT w.team, c.epa_allowed
+        FROM weekly w JOIN cumul c ON w.team = c.team
+        ORDER BY w.epa_week ASC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
 
 def get_social_best_defense_week(season: int, week: int):
     con = get_connection()
@@ -1476,7 +1500,43 @@ def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int =
     df = df.sort_values(["epa_per_play", "player_id"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = df.index + 1
     return df
+def get_team_epa_cumulative_through_week(season: int, week: int):
+    """EPA offensif/défensif moyen depuis la semaine 1 jusqu'à la semaine
+    sélectionnée incluse — pas la saison entière."""
+    con = get_connection()
+    query = """
+        WITH offense AS (
+            SELECT posteam AS team, AVG(epa) AS epa_offense
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        defense AS (
+            SELECT defteam AS team, AVG(epa) AS epa_defense
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        )
+        SELECT o.team, o.epa_offense, d.epa_defense
+        FROM offense o JOIN defense d ON o.team = d.team
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
 
+
+def get_player_epa_cumulative_through_week(player_id: str, season: int, week: int, role: str):
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    con = get_connection()
+    query = f"""
+        SELECT ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND week <= ? AND {colonne_id} = ? AND {filtre}
+    """
+    df = con.execute(query, [season, week, player_id]).fetchdf()
+    con.close()
+    return df
 
 def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int = 5):
     current = get_player_epa_rank_week(season, week, role, min_plays)

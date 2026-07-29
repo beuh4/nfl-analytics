@@ -11,6 +11,7 @@ from queries import (
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_top_rb_season_epa, get_top_wr_season_epa,
     get_top_teams_offense_yards_season,
+    get_team_epa_cumulative_through_week, get_player_epa_cumulative_through_week,
     get_social_top_qb_week, get_social_top_rb_week, get_social_top_wr_week,
     get_social_best_offense_week, get_social_best_defense_week,
 )
@@ -57,9 +58,9 @@ if type_carte == "Joueur":
 
     evolution = ligne["evolution"] if ligne["rank_precedent"] == ligne["rank_precedent"] else None
 
-    season_stat = get_player_season_epa(ligne["player_id"], season, role)
-    if not season_stat.empty and season_stat["epa_per_play"].iloc[0] == season_stat["epa_per_play"].iloc[0]:
-        valeur_affichee = f"{season_stat['epa_per_play'].iloc[0]:.3f}"
+    cumul_stat = get_player_epa_cumulative_through_week(ligne["player_id"], season, week, role)
+    if not cumul_stat.empty and cumul_stat["epa_per_play"].iloc[0] == cumul_stat["epa_per_play"].iloc[0]:
+        valeur_affichee = f"{cumul_stat['epa_per_play'].iloc[0]:.3f}"
     else:
         valeur_affichee = f"{ligne['epa_per_play']:.3f}"
 
@@ -89,19 +90,19 @@ elif type_carte == "Équipe":
     team_name = st.selectbox("Équipe", teams_df["team_name"], key="equipe_select")
     team_abbr = teams_df[teams_df["team_name"] == team_name]["team_abbr"].iloc[0]
 
-    df_epa_saison = get_team_epa_offense_defense(season)
-    df_off = df_epa_saison.sort_values("epa_offense", ascending=False).reset_index(drop=True)
-    df_def = df_epa_saison.sort_values("epa_defense", ascending=True).reset_index(drop=True)
+    df_cumul = get_team_epa_cumulative_through_week(season, week)
+    df_off = df_cumul.sort_values("epa_offense", ascending=False).reset_index(drop=True)
+    df_def = df_cumul.sort_values("epa_defense", ascending=True).reset_index(drop=True)
 
-    if team_abbr not in df_epa_saison["team"].values:
+    if team_abbr not in df_cumul["team"].values:
         st.warning("Données indisponibles pour cette équipe/saison.")
         st.stop()
 
     rang_off_saison = df_off[df_off["team"] == team_abbr].index[0] + 1
     rang_def_saison = df_def[df_def["team"] == team_abbr].index[0] + 1
-    epa_off_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_offense"].iloc[0]
-    epa_def_saison = df_epa_saison[df_epa_saison["team"] == team_abbr]["epa_defense"].iloc[0]
-    st.write(f"DEBUG — EPA Offense: {epa_off_saison} | EPA Défense: {epa_def_saison}")
+    epa_off_saison = df_cumul[df_cumul["team"] == team_abbr]["epa_offense"].iloc[0]
+    epa_def_saison = df_cumul[df_cumul["team"] == team_abbr]["epa_defense"].iloc[0]
+
     mouvement = get_team_weekly_movement(season, week)
     rang_semaine, evolution_semaine = None, None
     if not mouvement.empty and team_abbr in mouvement["team"].values:
