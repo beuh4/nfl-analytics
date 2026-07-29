@@ -13,6 +13,8 @@ from queries import (
     get_best_offense_week, get_best_defense_week,
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_top_rb_season_epa, get_top_wr_season_epa,
+    get_player_season_epa, get_social_top_qb_week, get_social_top_rb_week, get_social_top_wr_week,
+    get_social_best_offense_week, get_social_best_defense_week,
     get_top_teams_offense_yards_season,
 )
 from social_cards import generer_carte_joueur, generer_carte_equipe, generer_podium_image, _formatter_valeur
@@ -56,12 +58,18 @@ if type_carte == "Joueur":
     bio = bio.iloc[0]
 
     evolution = ligne["evolution"] if ligne["rank_precedent"] == ligne["rank_precedent"] else None
+    
+    season_stat = get_player_season_epa(ligne["player_id"], season, role)
+    if not season_stat.empty and season_stat["epa_per_play"].iloc[0] == season_stat["epa_per_play"].iloc[0]:
+        valeur_affichee = f"{season_stat['epa_per_play'].iloc[0]:.3f}"
+    else:
+        valeur_affichee = f"{ligne['epa_per_play']:.3f}"
 
     if st.button("Générer le visuel"):
         img = generer_carte_joueur(
             nom=bio["player_name"], poste=bio["position"], team_abbr=ligne["team"],
             team_color=colors.get(ligne["team"], "#374151"), logo_url=logos.get(ligne["team"], ""),
-            photo_url=bio["headshot_url"], stat_label=label_map[poste], stat_value=f"{ligne['epa_per_play']:.3f}",
+            photo_url=bio["headshot_url"], stat_label=label_map[poste], stat_value=valeur_affichee,
             rang=int(ligne["rank"]), evolution=evolution,
         )
         buffer = BytesIO()
@@ -76,11 +84,11 @@ elif type_carte == "Podium":
 
 
         categories = {
-            "Top 3 QB — EPA/Dropback": (get_top_qb_week(season, week), "epa_per_play", 3, False),
-            "Top 3 RB — EPA/Course": (get_top_rb_week(season, week), "epa_per_play", 3, False),
-            "Top 3 Receveurs — EPA/Cible": (get_top_wr_week(season, week), "epa_per_play", 3, False),
-            "Top 3 Attaques — EPA": (get_best_offense_week(season, week), "epa_offense", 3, True),
-            "Top 3 Défenses — EPA Concédé": (get_best_defense_week(season, week), "epa_allowed", 3, True),
+            "Top 3 QB — EPA/Dropback": (get_social_top_qb_week(season, week), "epa_per_play", 3, False),
+            "Top 3 RB — EPA/Course": (get_social_top_rb_week(season, week), "epa_per_play", 3, False),
+            "Top 3 Receveurs — EPA/Cible": (get_social_top_wr_week(season, week), "epa_per_play", 3, False),
+            "Top 3 Attaques — EPA": (get_social_best_offense_week(season, week), "epa_offense", 3, True),
+            "Top 3 Défenses — EPA Concédé": (get_social_best_defense_week(season, week), "epa_allowed", 3, True),
         }
         libelle_periode = f"Semaine {week} — Saison {season}"
 

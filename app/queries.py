@@ -1306,7 +1306,155 @@ def get_team_weekly_movement(season: int, week: int):
     current["rank_precedent"] = current["team"].map(prev_map)
     current["evolution"] = current["rank_precedent"] - current["rank"]
     return current
+def get_player_season_epa(player_id: str, season: int, role: str):
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    con = get_connection()
+    query = f"""
+        SELECT ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND {colonne_id} = ? AND {filtre}
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
 
+
+def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT passer_player_id AS player_id, passer_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            GROUP BY passer_player_id, passer_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        season AS (
+            SELECT passer_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            GROUP BY passer_player_id
+        )
+        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN season s ON w.player_id = s.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_dropbacks_week, season, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT rusher_player_id AS player_id, rusher_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            GROUP BY rusher_player_id, rusher_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        season AS (
+            SELECT rusher_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            GROUP BY rusher_player_id
+        )
+        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN season s ON w.player_id = s.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_carries_week, season, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT receiver_player_id AS player_id, receiver_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            GROUP BY receiver_player_id, receiver_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        season AS (
+            SELECT receiver_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            GROUP BY receiver_player_id
+        )
+        SELECT w.player, w.team, s.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN season s ON w.player_id = s.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_targets_week, season, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_social_best_offense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT posteam AS team, AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        season AS (
+            SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense
+            FROM plays
+            WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        )
+        SELECT w.team, s.epa_offense
+        FROM weekly w JOIN season s ON w.team = s.team
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_social_best_defense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT defteam AS team, AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        ),
+        season AS (
+            SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed
+            FROM plays
+            WHERE season = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        )
+        SELECT w.team, s.epa_allowed
+        FROM weekly w JOIN season s ON w.team = s.team
+        ORDER BY w.epa_week ASC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, season]).fetchdf()
+    con.close()
+    return df
 
 def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int = 5):
     con = get_connection()
