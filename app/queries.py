@@ -1,12 +1,44 @@
+"""
+queries.py — couche d'accès aux données pour NFL Analytics.
+
+Toute l'app lit exclusivement via ce module : aucune page ne doit ouvrir
+une connexion DuckDB ou écrire de SQL directement. Ça centralise les
+requêtes, facilite les corrections transverses (ex. jointure rosters,
+migration st.iframe) et évite la duplication de logique déjà rencontrée
+plusieurs fois au fil du projet.
+
+Organisation du fichier (dans l'ordre) :
+    1. Connexion
+    2. Utilitaires génériques (couleurs, saisons, traductions)
+    3. Teams — vue saison
+    4. Teams — classement hebdomadaire avec mouvement (▲/▼ vs semaine précédente)
+    5. Players — bio et statistiques saison
+    6. Players — tendances hebdomadaires
+    7. Games
+    8. Classements saison complète (Rankings > onglet Saison, Home)
+    9. Classements hebdomadaires (Rankings > onglet Semaine)
+    10. Social Cards — variantes cumulées (semaine 1 → semaine sélectionnée)
+    11. Home — page d'accueil
+    12. Rendu visuel (HTML / iframe)
+
+Convention de nommage :
+    get_*      → requête SQL, retourne un DataFrame pandas
+    render_*   → affiche directement un composant Streamlit (pas de retour utile)
+    *_week     → portée une seule semaine
+    *_season   → portée saison complète
+    *_cumulative_through_week / get_social_* → portée semaine 1 → semaine N incluse
+"""
+
 import duckdb
 import streamlit as st
-import streamlit.components.v1 as components
 from pathlib import Path
 
-# Chemin vers la base DuckDB, relatif à ce fichier pour fonctionner
-# quel que soit le répertoire depuis lequel Streamlit est lancé.
 DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONNEXION
+# ──────────────────────────────────────────────────────────────────────────────
 
 def get_connection():
     # read_only=True évite un conflit de verrou si un job d'ingestion
@@ -14,12 +46,129 @@ def get_connection():
     return duckdb.connect(str(DB_PATH), read_only=True)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# UTILITAIRES GÉNÉRIQUES
+# ──────────────────────────────────────────────────────────────────────────────
+
 def get_available_seasons():
     con = get_connection()
     df = con.execute("SELECT DISTINCT season FROM plays ORDER BY season").fetchdf()
     con.close()
     return df["season"].tolist()
 
+def get_weeks_for_season(season: int):
+    con = get_connection()
+    df = con.execute(
+        "SELECT DISTINCT week FROM plays WHERE season = ? ORDER BY week", [season]
+    ).fetchdf()
+    con.close()
+    return df["week"].tolist()
+
+
+# ─────────────────────────────────────────────────────────────
+# Requêtes hebdomadaires (Weekly Recap)
+# ─────────────────────────────────────────────────────────────
+
+def get_team_colors():
+    con = get_connection()
+    df = con.execute("SELECT team_abbr, team_color FROM teams").fetchdf()
+    con.close()
+    return dict(zip(df["team_abbr"], df["team_color"]))
+
+def get_team_logos():
+    con = get_connection()
+    df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
+    con.close()
+    return dict(zip(df["team_abbr"], df["team_logo_espn"]))
+
+def couleur_texte_contraste(hex_color: str) -> str:
+    """Calcule si un texte noir ou blanc est plus lisible sur un fond hexadécimal donné.
+    Formule de luminance perçue ITU-R BT.601 : au-dessus de 0.6, le fond est
+    jugé clair (texte noir), en dessous, sombre (texte blanc)."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return "#000000" if luminance > 0.6 else "#ffffff"
+
+def convertir_taille_poids(height_val, weight_val):
+    """Convertit taille (pouces ou format '6-2') et poids (livres) en
+    mètres et kilogrammes. Retourne (None, None) si non convertible."""
+    metres = None
+    try:
+        inches = float(height_val)
+        metres = round(inches * 0.0254, 2)
+    except (TypeError, ValueError):
+        if isinstance(height_val, str) and "-" in height_val:
+            try:
+                pieds, pouces = height_val.split("-")
+                total_pouces = int(pieds) * 12 + int(pouces)
+                metres = round(total_pouces * 0.0254, 2)
+            except ValueError:
+                metres = None
+
+    poids_kg = None
+    try:
+        poids_kg = round(float(weight_val) * 0.453592)
+    except (TypeError, ValueError):
+        poids_kg = None
+
+    return metres, poids_kg
+
+def traduire_surface(valeur: str) -> str:
+    if not isinstance(valeur, str):
+        return "—"
+    return TRADUCTION_SURFACE.get(valeur.lower(), valeur.capitalize())
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TEAMS — VUE SAISON
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_all_teams():
+    """Seules les 32 équipes actives sont retenues : celles ayant joué lors
+    de la saison la plus récente en base. Filtre les franchises historiques
+    (ex. St. Louis Rams, Oakland Raiders) qui existent dans le référentiel
+    teams mais n'ont plus joué sous ce nom depuis leur déménagement."""
+    con = get_connection()
+    query = """
+        WITH equipes_actives AS (
+            SELECT DISTINCT posteam AS team_abbr FROM plays
+            WHERE season = (SELECT MAX(season) FROM plays)
+        )
+        SELECT t.team_abbr, t.team_name
+        FROM teams t
+        JOIN equipes_actives e ON t.team_abbr = e.team_abbr
+        ORDER BY t.team_name
+    """
+    df = con.execute(query).fetchdf()
+    con.close()
+    return df
+
+def get_all_teams_records(season: int):
+    """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
+    la table games (un match compte pour les deux équipes via UNION ALL)."""
+    con = get_connection()
+    query = """
+        WITH normalized AS (
+            SELECT home_team AS team, home_score AS team_score, away_score AS opp_score
+            FROM games WHERE season = ?
+            UNION ALL
+            SELECT away_team AS team, away_score AS team_score, home_score AS opp_score
+            FROM games WHERE season = ?
+        )
+        SELECT team,
+            SUM(CASE WHEN team_score > opp_score THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN team_score < opp_score THEN 1 ELSE 0 END) AS losses,
+            SUM(CASE WHEN team_score = opp_score THEN 1 ELSE 0 END) AS ties
+        FROM normalized
+        WHERE team_score IS NOT NULL AND opp_score IS NOT NULL
+        GROUP BY team
+    """
+    df = con.execute(query, [season, season]).fetchdf()
+    con.close()
+    total = df["wins"] + df["losses"] + df["ties"]
+    df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
+    return df
 
 def get_team_epa_offense_defense(season: int):
     """EPA offensif et défensif par équipe pour une saison donnée."""
@@ -54,9 +203,6 @@ def get_team_epa_offense_defense(season: int):
     con.close()
     return df
 
-
-
-
 def get_team_epa_by_week(team: str, season: int):
     """EPA offensif/défensif semaine par semaine pour une équipe et une saison."""
     con = get_connection()
@@ -75,7 +221,6 @@ def get_team_epa_by_week(team: str, season: int):
     df = con.execute(query, [team, team, season, team, team]).fetchdf()
     con.close()
     return df
-
 
 def get_team_epa_by_season_multi(teams: list[str]):
     """EPA offensif/défensif saison par saison, pour plusieurs équipes en parallèle."""
@@ -103,7 +248,6 @@ def get_team_epa_by_season_multi(teams: list[str]):
     con.close()
     return df
 
-
 def get_seasons_for_team(team: str):
     con = get_connection()
     query = """
@@ -115,45 +259,49 @@ def get_seasons_for_team(team: str):
     con.close()
     return df["season"].tolist()
 
-
-def get_team_colors():
+def get_team_schedule(team: str, season: int):
+    """Calendrier complet d'une équipe pour une saison, normalisé du point
+    de vue de cette équipe (team_score/opp_score plutôt que home/away).
+    Sert à la fois pour le bilan, les derniers matchs et les prochains matchs."""
     con = get_connection()
-    df = con.execute("SELECT team_abbr, team_color FROM teams").fetchdf()
+    query = """
+        SELECT
+            week, gameday,
+            CASE WHEN home_team = ? THEN away_team ELSE home_team END AS opponent,
+            CASE WHEN home_team = ? THEN TRUE ELSE FALSE END AS domicile,
+            CASE WHEN home_team = ? THEN home_score ELSE away_score END AS team_score,
+            CASE WHEN home_team = ? THEN away_score ELSE home_score END AS opp_score
+        FROM games
+        WHERE season = ? AND (home_team = ? OR away_team = ?)
+        ORDER BY week
+    """
+    df = con.execute(query, [team, team, team, team, season, team, team]).fetchdf()
     con.close()
-    return dict(zip(df["team_abbr"], df["team_color"]))
+    df["joue"] = df["team_score"].notna() & df["opp_score"].notna()
+    return df
 
-
-def get_team_logos():
+def get_team_defensive_summary(team: str, season: int):
+    """Résumé défensif au niveau équipe. Pas de détail par joueur :
+    sack_player_id et les colonnes de tackle ne sont pas dans le schéma."""
     con = get_connection()
-    df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
+            COUNT(*) FILTER (WHERE fumble_lost = 1) AS fumbles_forces,
+            SUM(CAST(sack AS DOUBLE)) AS sacks,
+            ROUND(
+                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
+                / NULLIF(SUM(CASE WHEN pass = 1 THEN 1 ELSE 0 END), 0),
+                3
+            ) AS taux_pression
+        FROM plays
+        WHERE season = ? AND defteam = ?
+    """
+    df = con.execute(query, [season, team]).fetchdf()
     con.close()
-    return dict(zip(df["team_abbr"], df["team_logo_espn"]))
+    return df
 
-
-def couleur_texte_contraste(hex_color: str) -> str:
-    """Calcule si un texte noir ou blanc est plus lisible sur un fond hexadécimal donné.
-    Formule de luminance perçue ITU-R BT.601 : au-dessus de 0.6, le fond est
-    jugé clair (texte noir), en dessous, sombre (texte blanc)."""
-    hex_color = hex_color.lstrip("#")
-    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return "#000000" if luminance > 0.6 else "#ffffff"
-
-
-def get_weeks_for_season(season: int):
-    con = get_connection()
-    df = con.execute(
-        "SELECT DISTINCT week FROM plays WHERE season = ? ORDER BY week", [season]
-    ).fetchdf()
-    con.close()
-    return df["week"].tolist()
-
-
-# ─────────────────────────────────────────────────────────────
-# Requêtes hebdomadaires (Weekly Recap)
-# ─────────────────────────────────────────────────────────────
-
-def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
+def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -161,18 +309,28 @@ def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
         LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.week = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_dropbacks]).fetchdf()
+    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
     con.close()
     return df
 
+TRADUCTION_SURFACE = {
+    "grass": "Pelouse naturelle",
+    "fieldturf": "Gazon synthétique (FieldTurf)",
+    "turf": "Gazon synthétique",
+    "astroturf": "Gazon synthétique (AstroTurf)",
+    "sportturf": "Gazon synthétique (SportTurf)",
+    "matrixturf": "Gazon synthétique (MatrixTurf)",
+    "a_turf": "Gazon synthétique",
+    "dessograss": "Pelouse hybride (Desso GrassMaster)",
+}
 
-def get_top_rb_week(season: int, week: int, min_carries: int = 5):
+def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -180,18 +338,17 @@ def get_top_rb_week(season: int, week: int, min_carries: int = 5):
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
         LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.week = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
         GROUP BY p.rusher_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_carries]).fetchdf()
+    df = con.execute(query, [season, team, min_carries]).fetchdf()
     con.close()
     return df
 
-
-def get_top_wr_week(season: int, week: int, min_targets: int = 3):
+def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -199,160 +356,17 @@ def get_top_wr_week(season: int, week: int, min_targets: int = 3):
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
         LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.week = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
         GROUP BY p.receiver_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY epa_per_play DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, week, min_targets]).fetchdf()
+    df = con.execute(query, [season, team, min_targets]).fetchdf()
     con.close()
     return df
 
-
-def get_best_offense_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense, COUNT(*) AS plays
-        FROM plays
-        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-        GROUP BY posteam
-        ORDER BY epa_offense DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_best_defense_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed, COUNT(*) AS plays
-        FROM plays
-        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-        GROUP BY defteam
-        ORDER BY epa_allowed ASC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_biggest_surprises_week(season: int, week: int):
-    """Compare l'EPA de la semaine à la moyenne du reste de la saison,
-    pour repérer les équipes qui sortent nettement du lot (en bien ou en mal)."""
-    con = get_connection()
-    query = """
-        WITH season_avg AS (
-            SELECT posteam AS team, AVG(epa) AS avg_season
-            FROM plays
-            WHERE season = ? AND week != ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-            GROUP BY posteam
-        ),
-        week_epa AS (
-            SELECT posteam AS team, AVG(epa) AS avg_week
-            FROM plays
-            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-            GROUP BY posteam
-        )
-        SELECT w.team,
-               ROUND(s.avg_season, 3) AS moyenne_saison,
-               ROUND(w.avg_week, 3) AS cette_semaine,
-               ROUND(w.avg_week - s.avg_season, 3) AS ecart
-        FROM week_epa w
-        JOIN season_avg s ON w.team = s.team
-        ORDER BY ecart DESC
-    """
-    df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_explosive_plays_week(season: int, week: int):
-    """Seuils : 20+ yards en passe, 10+ yards en course — standard NFL
-    pour qualifier un jeu d'explosif."""
-    con = get_connection()
-    team_query = """
-        SELECT posteam AS team, COUNT(*) AS explosive_plays
-        FROM plays
-        WHERE season = ? AND week = ?
-          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
-        GROUP BY posteam
-        ORDER BY explosive_plays DESC
-        LIMIT 5
-    """
-    top_teams = con.execute(team_query, [season, week]).fetchdf()
-
-    plays_query = """
-        SELECT COALESCE(passer_player_name, rusher_player_name) AS player,
-               posteam AS team, play_type, yards_gained, ROUND(epa, 3) AS epa
-        FROM plays
-        WHERE season = ? AND week = ?
-          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
-        ORDER BY yards_gained DESC
-        LIMIT 5
-    """
-    top_plays = con.execute(plays_query, [season, week]).fetchdf()
-    con.close()
-    return top_teams, top_plays
-
-
-def get_turnover_battle_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        WITH giveaways AS (
-            SELECT posteam AS team, COUNT(*) AS giveaways
-            FROM plays
-            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
-            GROUP BY posteam
-        ),
-        takeaways AS (
-            SELECT defteam AS team, COUNT(*) AS takeaways
-            FROM plays
-            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
-            GROUP BY defteam
-        )
-        SELECT COALESCE(g.team, t.team) AS team,
-               COALESCE(t.takeaways, 0) AS takeaways,
-               COALESCE(g.giveaways, 0) AS giveaways,
-               COALESCE(t.takeaways, 0) - COALESCE(g.giveaways, 0) AS differentiel
-        FROM giveaways g
-        FULL OUTER JOIN takeaways t ON g.team = t.team
-        ORDER BY differentiel DESC
-    """
-    df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_pressure_leaders_week(season: int, week: int):
-    con = get_connection()
-    # CAST(... AS DOUBLE) plutôt que CASE WHEN was_pressure THEN :
-    # la colonne peut être stockée en DOUBLE (0.0/1.0/NaN) après passage
-    # par parquet, pas en booléen strict — DuckDB refuse sinon la comparaison.
-    query = """
-        SELECT defteam AS team,
-               SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressures,
-               COUNT(*) AS pass_plays,
-               ROUND(SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0 / COUNT(*), 3) AS taux_pression
-        FROM plays
-        WHERE season = ? AND week = ? AND pass = 1 AND defteam IS NOT NULL
-        GROUP BY defteam
-        ORDER BY pressures DESC
-        LIMIT 5
-    """
-    df = con.execute(query, [season, week]).fetchdf()
-    con.close()
-    return df
-
-
-# ─────────────────────────────────────────────────────────────
-# Requêtes annuelles (Annual Recap) — stats brutes (yards)
-# ─────────────────────────────────────────────────────────────
-
-def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
+def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -360,15 +374,164 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
         LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
         GROUP BY p.passer_player_name, p.posteam
         HAVING COUNT(*) >= ?
         ORDER BY yards DESC
         LIMIT 3
     """
-    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
     con.close()
     return df
+
+def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_carries]).fetchdf()
+    con.close()
+    return df
+
+def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, team, min_targets]).fetchdf()
+    con.close()
+    return df
+
+# ─────────────────────────────────────────────────────────────
+# Traduction des colonnes et style des tableaux
+# ─────────────────────────────────────────────────────────────
+
+TRADUCTIONS_COLONNES = {
+    "team": "Équipe",
+    "team_name": "Nom",
+    "epa_offense": "EPA Offense",
+    "epa_defense": "EPA Défense",
+    "epa_allowed": "EPA Concédé",
+    "epa_per_play": "EPA/Play",
+    "plays_offense": "Jeux Off.",
+    "plays_defense": "Jeux Déf.",
+    "week": "Semaine",
+    "season": "Saison",
+    "player": "Joueur",
+    "dropbacks": "Dropbacks",
+    "carries": "Courses",
+    "targets": "Cibles",
+    "plays": "Plays",
+    "yards": "Yards",
+    "moyenne_saison": "Moyenne Saison",
+    "cette_semaine": "Cette Semaine",
+    "ecart": "Écart",
+    "explosive_plays": "Jeux Explosifs",
+    "play_type": "Type de Jeu",
+    "yards_gained": "Yards",
+    "epa": "EPA",
+    "takeaways": "Prises",
+    "giveaways": "Pertes",
+    "differentiel": "Différentiel",
+    "pressures": "Pressions",
+    "pass_plays": "Plays Passe",
+    "taux_pression": "Taux Pression",
+    "qtr": "Quart-temps",
+    "down": "Down",
+    "ydstogo": "À Franchir",
+    "yardline_100": "Position",
+    "desc": "Description",
+    "resultat": "Résultat",
+    "depart": "Départ",
+    "possession": "Possession",
+    "score_marque": "Score Marqué",
+    "points_marques": "Points Marqués",
+    "score_domicile": "Score Domicile",
+    "score_exterieur": "Score Extérieur",
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TEAMS — CLASSEMENT HEBDOMADAIRE AVEC MOUVEMENT
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_team_epa_rank_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, AVG(epa) AS epa_offense
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    if df.empty:
+        return df
+    df = df.sort_values(["epa_offense", "team"], ascending=[False, True]).reset_index(drop=True)
+    df["rank"] = df.index + 1
+    return df
+
+def get_team_weekly_movement(season: int, week: int):
+    """Classement EPA offensif de la semaine, avec évolution de rang vs
+    la semaine précédente de la même saison."""
+    current = get_team_epa_rank_week(season, week)
+    if current.empty:
+        return current
+    prev_map = {}
+    if week > 1:
+        previous = get_team_epa_rank_week(season, week - 1)
+        if not previous.empty:
+            prev_map = dict(zip(previous["team"], previous["rank"]))
+    current["rank_precedent"] = current["team"].map(prev_map)
+    current["evolution"] = current["rank_precedent"] - current["rank"]
+    return current
+
+def get_team_epa_cumulative_through_week(season: int, week: int):
+    """EPA offensif/défensif moyen depuis la semaine 1 jusqu'à la semaine
+    sélectionnée incluse — pas la saison entière."""
+    con = get_connection()
+    query = """
+        WITH offense AS (
+            SELECT posteam AS team, AVG(epa) AS epa_offense
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        defense AS (
+            SELECT defteam AS team, AVG(epa) AS epa_defense
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        )
+        SELECT o.team, o.epa_offense, d.epa_defense
+        FROM offense o JOIN defense d ON o.team = d.team
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PLAYERS — BIO ET STATISTIQUES SAISON
+# ──────────────────────────────────────────────────────────────────────────────
 
 def get_player_search_list(season: int):
     """Liste des joueurs ayant au moins une statistique qualifiante — offensive
@@ -409,6 +572,116 @@ def get_player_search_list(season: int):
     df = con.execute(query, params).fetchdf()
     con.close()
     return df
+
+def get_player_bio(player_id: str, season: int):
+    """Bio du joueur telle qu'au moment de la saison donnée. Si absente
+    (joueur non présent au roster cette saison précise), repli sur la
+    saison connue la plus proche."""
+    con = get_connection()
+    query = """
+        SELECT player_name, team, position, age, height, weight,
+               college, jersey_number, years_exp, headshot_url
+        FROM rosters
+        WHERE player_id = ? AND season = ?
+    """
+    df = con.execute(query, [player_id, season]).fetchdf()
+    if df.empty:
+        query_fallback = """
+            SELECT player_name, team, position, age, height, weight,
+                   college, jersey_number, years_exp, headshot_url
+            FROM rosters
+            WHERE player_id = ?
+            ORDER BY ABS(season - ?) ASC
+            LIMIT 1
+        """
+        df = con.execute(query_fallback, [player_id, season]).fetchdf()
+    con.close()
+    return df
+
+def get_player_games_played(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT COUNT(DISTINCT game_id) AS matchs
+        FROM plays
+        WHERE season = ?
+          AND (passer_player_id = ? OR rusher_player_id = ? OR receiver_player_id = ?)
+    """
+    df = con.execute(query, [season, player_id, player_id, player_id]).fetchdf()
+    con.close()
+    return int(df["matchs"].iloc[0]) if not df.empty else 0
+
+def get_player_passing_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE pass = 1) AS tentatives,
+            COUNT(*) FILTER (WHERE complete_pass = 1) AS completions,
+            SUM(passing_yards) AS yards,
+            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
+            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
+            ROUND(AVG(epa) FILTER (WHERE qb_dropback = 1), 3) AS epa_per_play,
+            ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe,
+            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
+            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks
+        FROM plays
+        WHERE season = ? AND passer_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+def get_player_rushing_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE rush = 1) AS courses,
+            SUM(rushing_yards) AS yards,
+            COUNT(*) FILTER (WHERE rush = 1 AND touchdown = 1) AS td,
+            ROUND(AVG(epa) FILTER (WHERE rush = 1), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND rusher_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+def get_player_receiving_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE pass = 1) AS cibles,
+            COUNT(*) FILTER (WHERE complete_pass = 1) AS receptions,
+            SUM(receiving_yards) AS yards,
+            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
+            ROUND(AVG(epa) FILTER (WHERE pass = 1), 3) AS epa_per_play,
+            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
+            ROUND(AVG(yards_after_catch) FILTER (WHERE complete_pass = 1), 1) AS yac_moy
+        FROM plays
+        WHERE season = ? AND receiver_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+def get_player_pressure_season(player_id: str, season: int):
+    con = get_connection()
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks,
+            SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressions_subies,
+            SUM(CAST(sack AS DOUBLE)) AS sacks_subis,
+            ROUND(
+                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
+                / NULLIF(COUNT(*) FILTER (WHERE qb_dropback = 1), 0),
+                3
+            ) AS taux_pression
+        FROM plays
+        WHERE season = ? AND passer_player_id = ?
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
 def get_player_defensive_season(player_id: str, season: int):
     con = get_connection()
     query = """
@@ -434,6 +707,107 @@ def get_player_defensive_season(player_id: str, season: int):
         df["sacks_totaux"] = df["sacks_pleins"] + df["demi_sacks"] * 0.5
     return df
 
+def get_player_season_epa(player_id: str, season: int, role: str):
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    con = get_connection()
+    query = f"""
+        SELECT ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND {colonne_id} = ? AND {filtre}
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
+
+def get_qb_full_rankings(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT passer_player_id AS player_id,
+               SUM(passing_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play,
+               ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe
+        FROM plays
+        WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+        GROUP BY passer_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+def get_rb_full_rankings(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT rusher_player_id AS player_id,
+               SUM(rushing_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+        GROUP BY rusher_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+def get_wr_full_rankings(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT receiver_player_id AS player_id,
+               SUM(receiving_yards) AS yards,
+               ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+        GROUP BY receiver_player_id
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+def get_rank_label(df_rankings, player_id: str, metric_col: str):
+    """Retourne '#3 / 24' si le joueur est qualifié pour ce classement,
+    None sinon (échantillon trop petit ou stat non applicable)."""
+    if df_rankings.empty or player_id not in df_rankings["player_id"].values:
+        return None
+    df_sorted = df_rankings.sort_values(metric_col, ascending=False).reset_index(drop=True)
+    idx = df_sorted[df_sorted["player_id"] == player_id].index
+    if len(idx) == 0:
+        return None
+    rang = idx[0] + 1
+    total = len(df_sorted)
+    return f"#{rang} / {total}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PLAYERS — TENDANCES HEBDOMADAIRES
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_player_weekly_trend(player_id: str, season: int, role: str):
+    """role : 'passing', 'rushing' ou 'receiving' — détermine la colonne
+    d'identifiant et le filtre de type de jeu à utiliser."""
+    con = get_connection()
+    colonne_id = {
+        "passing": "passer_player_id",
+        "rushing": "rusher_player_id",
+        "receiving": "receiver_player_id",
+    }[role]
+    filtre_type = {
+        "passing": "qb_dropback = 1",
+        "rushing": "rush = 1",
+        "receiving": "pass = 1",
+    }[role]
+    query = f"""
+        SELECT week, ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
+        FROM plays
+        WHERE season = ? AND {colonne_id} = ? AND {filtre_type}
+        GROUP BY week
+        ORDER BY week
+    """
+    df = con.execute(query, [season, player_id]).fetchdf()
+    con.close()
+    return df
 
 def get_player_defensive_weekly_trend(player_id: str, season: int):
     """Volume défensif hebdomadaire (tacles + sacks + PD + FF + INT) —
@@ -461,43 +835,688 @@ def get_player_defensive_weekly_trend(player_id: str, season: int):
     con.close()
     return df
 
-def convertir_taille_poids(height_val, weight_val):
-    """Convertit taille (pouces ou format '6-2') et poids (livres) en
-    mètres et kilogrammes. Retourne (None, None) si non convertible."""
-    metres = None
-    try:
-        inches = float(height_val)
-        metres = round(inches * 0.0254, 2)
-    except (TypeError, ValueError):
-        if isinstance(height_val, str) and "-" in height_val:
-            try:
-                pieds, pouces = height_val.split("-")
-                total_pouces = int(pieds) * 12 + int(pouces)
-                metres = round(total_pouces * 0.0254, 2)
-            except ValueError:
-                metres = None
+def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int = 5):
+    con = get_connection()
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    nom_col = {"passing": "passer_player_name", "rushing": "rusher_player_name", "receiving": "receiver_player_name"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    query = f"""
+        SELECT {colonne_id} AS player_id, ANY_VALUE({nom_col}) AS player, ANY_VALUE(posteam) AS team,
+               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
+        FROM plays
+        WHERE season = ? AND week = ? AND {filtre} AND {colonne_id} IS NOT NULL
+        GROUP BY {colonne_id}
+        HAVING COUNT(*) >= ?
+    """
+    df = con.execute(query, [season, week, min_plays]).fetchdf()
+    con.close()
+    if df.empty:
+        return df
+    df = df.sort_values(["epa_per_play", "player_id"], ascending=[False, True]).reset_index(drop=True)
+    df["rank"] = df.index + 1
+    return df
 
-    poids_kg = None
-    try:
-        poids_kg = round(float(weight_val) * 0.453592)
-    except (TypeError, ValueError):
-        poids_kg = None
+def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int = 5):
+    current = get_player_epa_rank_week(season, week, role, min_plays)
+    if current.empty:
+        return current
+    prev_map = {}
+    if week > 1:
+        previous = get_player_epa_rank_week(season, week - 1, role, min_plays)
+        if not previous.empty:
+            prev_map = dict(zip(previous["player_id"], previous["rank"]))
+    current["rank_precedent"] = current["player_id"].map(prev_map)
+    current["evolution"] = current["rank_precedent"] - current["rank"]
+    return current
 
-    return metres, poids_kg
+def get_player_epa_cumulative_through_week(player_id: str, season: int, week: int, role: str):
+    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
+    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
+    con = get_connection()
+    query = f"""
+        SELECT ROUND(AVG(epa), 3) AS epa_per_play
+        FROM plays
+        WHERE season = ? AND week <= ? AND {colonne_id} = ? AND {filtre}
+    """
+    df = con.execute(query, [season, week, player_id]).fetchdf()
+    con.close()
+    return df
 
 
-def get_player_games_played(player_id: str, season: int):
+# ──────────────────────────────────────────────────────────────────────────────
+# GAMES
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_games_for_week(season: int, week: int):
     con = get_connection()
     query = """
-        SELECT COUNT(DISTINCT game_id) AS matchs
-        FROM plays
-        WHERE season = ?
-          AND (passer_player_id = ? OR rusher_player_id = ? OR receiver_player_id = ?)
+        SELECT game_id, week, gameday, home_team, away_team, home_score, away_score
+        FROM games
+        WHERE season = ? AND week = ?
+        ORDER BY gameday
     """
-    df = con.execute(query, [season, player_id, player_id, player_id]).fetchdf()
+    df = con.execute(query, [season, week]).fetchdf()
     con.close()
-    return int(df["matchs"].iloc[0]) if not df.empty else 0
+    return df
 
+def get_game_info(game_id: str):
+    con = get_connection()
+    query = """
+        SELECT season, week, gameday, home_team, away_team, home_score, away_score,
+               roof, surface, temp, wind, stadium, home_coach, away_coach, overtime
+        FROM games WHERE game_id = ?
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    return df
+
+def get_game_win_probability(game_id: str):
+    """Win probability du point de vue de l'équipe à domicile, reconstruite
+    depuis wp (probabilité de l'équipe en possession) selon qui a le ballon."""
+    con = get_connection()
+    query = """
+        SELECT play_id,
+               CASE WHEN posteam = home_team THEN wp ELSE 1 - wp END AS home_wp
+        FROM plays
+        WHERE game_id = ? AND wp IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = range(1, len(df) + 1)
+    return df
+
+def get_game_epa_cumulative(game_id: str):
+    con = get_connection()
+    query = """
+        SELECT play_id, posteam,
+               SUM(epa) OVER (PARTITION BY posteam ORDER BY play_id) AS epa_cumule
+        FROM plays
+        WHERE game_id = ? AND posteam IS NOT NULL AND epa IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = df.groupby("posteam").cumcount() + 1
+    return df
+
+def get_game_score_progression(game_id: str):
+    """Écart de score du point de vue de l'équipe à domicile, reconstruit
+    depuis score_differential (qui est du point de vue de l'équipe en
+    possession, donc inversé quand c'est l'équipe visiteuse qui l'a)."""
+    con = get_connection()
+    query = """
+        SELECT play_id,
+               CASE WHEN posteam = home_team THEN score_differential ELSE -score_differential END AS ecart_domicile
+        FROM plays
+        WHERE game_id = ? AND score_differential IS NOT NULL
+        ORDER BY play_id
+    """
+    df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    df["progression"] = range(1, len(df) + 1)
+    return df
+
+def get_game_drives(game_id: str):
+    con = get_connection()
+    query = """
+        WITH bounds AS (
+            SELECT drive, ANY_VALUE(posteam) AS team,
+                   MAX(drive_play_count) AS plays,
+                   ANY_VALUE(fixed_drive_result) AS resultat,
+                   ANY_VALUE(drive_start_yard_line) AS depart,
+                   ANY_VALUE(drive_time_of_possession) AS possession,
+                   MIN(play_id) AS first_play_id,
+                   MAX(play_id) AS last_play_id
+            FROM plays
+            WHERE game_id = ? AND drive IS NOT NULL
+            GROUP BY drive
+        )
+        SELECT b.drive, b.team, b.plays, b.resultat, b.depart, b.possession,
+               p_start.total_home_score AS home_avant, p_start.total_away_score AS away_avant,
+               p_end.total_home_score AS score_domicile, p_end.total_away_score AS score_exterieur
+        FROM bounds b
+        JOIN plays p_start ON p_start.game_id = ? AND p_start.play_id = b.first_play_id
+        JOIN plays p_end ON p_end.game_id = ? AND p_end.play_id = b.last_play_id
+        ORDER BY b.drive
+    """
+    df = con.execute(query, [game_id, game_id, game_id]).fetchdf()
+    con.close()
+
+    if not df.empty:
+        # Points marqués sur ce drive = variation du total de points (les deux
+        # équipes confondues) entre le début et la fin du drive — fonctionne
+        # même en cas de score défensif (pick-six, etc.).
+        df["points_marques"] = (
+            (df["score_domicile"] + df["score_exterieur"])
+            - (df["home_avant"] + df["away_avant"])
+        ).fillna(0).astype(int)
+        df["plays"] = df["plays"].fillna(0).astype(int)
+        df["score_domicile"] = df["score_domicile"].fillna(0).astype(int)
+        df["score_exterieur"] = df["score_exterieur"].fillna(0).astype(int)
+        df = df.drop(columns=["home_avant", "away_avant"])
+
+    return df
+
+def get_game_top_performer(game_id: str, team: str, season: int, role: str):
+    """role : 'passing', 'rushing' ou 'receiving'."""
+    con = get_connection()
+    colonnes = {
+        "passing": ("passer_player_name", "passer_player_id", "passing_yards", "qb_dropback = 1", "QB"),
+        "rushing": ("rusher_player_name", "rusher_player_id", "rushing_yards", "rush = 1", "RB"),
+        "receiving": ("receiver_player_name", "receiver_player_id", "receiving_yards", "pass = 1", "REC"),
+    }
+    nom_col, id_col, yards_col, filtre, poste_defaut = colonnes[role]
+    query = f"""
+        SELECT p.{nom_col} AS player, SUM(p.{yards_col}) AS yards, ROUND(AVG(p.epa), 3) AS epa_per_play,
+               ANY_VALUE(r.headshot_url) AS photo_url,
+               COALESCE(ANY_VALUE(r.position), '{poste_defaut}') AS position
+        FROM plays p
+        LEFT JOIN rosters r ON p.{id_col} = r.player_id AND r.season = ?
+        WHERE p.game_id = ? AND p.posteam = ? AND p.{filtre} AND p.{id_col} IS NOT NULL
+        GROUP BY p.{nom_col}
+        ORDER BY yards DESC
+        LIMIT 1
+    """
+    df = con.execute(query, [season, game_id, team]).fetchdf()
+    con.close()
+    return df
+
+def get_game_play_by_play(game_id: str, quarter: int | None = None):
+    con = get_connection()
+    if quarter:
+        query = """
+            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
+            FROM plays
+            WHERE game_id = ? AND "desc" IS NOT NULL AND qtr = ?
+            ORDER BY play_id
+        """
+        df = con.execute(query, [game_id, quarter]).fetchdf()
+    else:
+        query = """
+            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
+            FROM plays
+            WHERE game_id = ? AND "desc" IS NOT NULL
+            ORDER BY play_id
+        """
+        df = con.execute(query, [game_id]).fetchdf()
+    con.close()
+    return df
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLASSEMENTS SAISON COMPLÈTE (Rankings > onglet Saison, Home)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+def get_top_rb_season_yards(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+def get_top_wr_season_yards(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+def get_top_teams_offense_yards_season(season: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, SUM(yards_gained) AS yards, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY yards DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season]).fetchdf()
+    con.close()
+    return df
+
+
+# ─────────────────────────────────────────────────────────────
+# Requêtes annuelles (Annual Recap) — EPA sur la saison entière
+# ─────────────────────────────────────────────────────────────
+
+def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+def get_top_rb_season_epa(season: int, min_carries: int = 50):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_carries]).fetchdf()
+    con.close()
+    return df
+
+def get_top_wr_season_epa(season: int, min_targets: int = 30):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    con.close()
+    return df
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLASSEMENTS HEBDOMADAIRES (Rankings > onglet Semaine)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.week = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_dropbacks]).fetchdf()
+    con.close()
+    return df
+
+def get_top_rb_week(season: int, week: int, min_carries: int = 5):
+    con = get_connection()
+    query = """
+        SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.week = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_carries]).fetchdf()
+    con.close()
+    return df
+
+def get_top_wr_week(season: int, week: int, min_targets: int = 3):
+    con = get_connection()
+    query = """
+        SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.week = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY epa_per_play DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_targets]).fetchdf()
+    con.close()
+    return df
+
+def get_best_offense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY epa_offense DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+def get_best_defense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed, COUNT(*) AS plays
+        FROM plays
+        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+        GROUP BY defteam
+        ORDER BY epa_allowed ASC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+def get_biggest_surprises_week(season: int, week: int):
+    """Compare l'EPA de la semaine à la moyenne du reste de la saison,
+    pour repérer les équipes qui sortent nettement du lot (en bien ou en mal)."""
+    con = get_connection()
+    query = """
+        WITH season_avg AS (
+            SELECT posteam AS team, AVG(epa) AS avg_season
+            FROM plays
+            WHERE season = ? AND week != ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        week_epa AS (
+            SELECT posteam AS team, AVG(epa) AS avg_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        )
+        SELECT w.team,
+               ROUND(s.avg_season, 3) AS moyenne_saison,
+               ROUND(w.avg_week, 3) AS cette_semaine,
+               ROUND(w.avg_week - s.avg_season, 3) AS ecart
+        FROM week_epa w
+        JOIN season_avg s ON w.team = s.team
+        ORDER BY ecart DESC
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+def get_explosive_plays_week(season: int, week: int):
+    """Seuils : 20+ yards en passe, 10+ yards en course — standard NFL
+    pour qualifier un jeu d'explosif."""
+    con = get_connection()
+    team_query = """
+        SELECT posteam AS team, COUNT(*) AS explosive_plays
+        FROM plays
+        WHERE season = ? AND week = ?
+          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
+        GROUP BY posteam
+        ORDER BY explosive_plays DESC
+        LIMIT 5
+    """
+    top_teams = con.execute(team_query, [season, week]).fetchdf()
+
+    plays_query = """
+        SELECT COALESCE(passer_player_name, rusher_player_name) AS player,
+               posteam AS team, play_type, yards_gained, ROUND(epa, 3) AS epa
+        FROM plays
+        WHERE season = ? AND week = ?
+          AND ((pass = 1 AND yards_gained >= 20) OR (rush = 1 AND yards_gained >= 10))
+        ORDER BY yards_gained DESC
+        LIMIT 5
+    """
+    top_plays = con.execute(plays_query, [season, week]).fetchdf()
+    con.close()
+    return top_teams, top_plays
+
+def get_turnover_battle_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH giveaways AS (
+            SELECT posteam AS team, COUNT(*) AS giveaways
+            FROM plays
+            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
+            GROUP BY posteam
+        ),
+        takeaways AS (
+            SELECT defteam AS team, COUNT(*) AS takeaways
+            FROM plays
+            WHERE season = ? AND week = ? AND (interception = 1 OR fumble_lost = 1)
+            GROUP BY defteam
+        )
+        SELECT COALESCE(g.team, t.team) AS team,
+               COALESCE(t.takeaways, 0) AS takeaways,
+               COALESCE(g.giveaways, 0) AS giveaways,
+               COALESCE(t.takeaways, 0) - COALESCE(g.giveaways, 0) AS differentiel
+        FROM giveaways g
+        FULL OUTER JOIN takeaways t ON g.team = t.team
+        ORDER BY differentiel DESC
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+def get_pressure_leaders_week(season: int, week: int):
+    con = get_connection()
+    # CAST(... AS DOUBLE) plutôt que CASE WHEN was_pressure THEN :
+    # la colonne peut être stockée en DOUBLE (0.0/1.0/NaN) après passage
+    # par parquet, pas en booléen strict — DuckDB refuse sinon la comparaison.
+    query = """
+        SELECT defteam AS team,
+               SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressures,
+               COUNT(*) AS pass_plays,
+               ROUND(SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0 / COUNT(*), 3) AS taux_pression
+        FROM plays
+        WHERE season = ? AND week = ? AND pass = 1 AND defteam IS NOT NULL
+        GROUP BY defteam
+        ORDER BY pressures DESC
+        LIMIT 5
+    """
+    df = con.execute(query, [season, week]).fetchdf()
+    con.close()
+    return df
+
+
+# ─────────────────────────────────────────────────────────────
+# Requêtes annuelles (Annual Recap) — stats brutes (yards)
+# ─────────────────────────────────────────────────────────────
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SOCIAL CARDS — VARIANTES CUMULÉES (semaine 1 → semaine sélectionnée)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT passer_player_id AS player_id, passer_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            GROUP BY passer_player_id, passer_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        cumul AS (
+            SELECT passer_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND week <= ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
+            GROUP BY passer_player_id
+        )
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN cumul c ON w.player_id = c.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_dropbacks_week, season, week, season]).fetchdf()
+    con.close()
+    return df
+
+def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT rusher_player_id AS player_id, rusher_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            GROUP BY rusher_player_id, rusher_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        cumul AS (
+            SELECT rusher_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND week <= ? AND rush = 1 AND rusher_player_id IS NOT NULL
+            GROUP BY rusher_player_id
+        )
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN cumul c ON w.player_id = c.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_carries_week, season, week, season]).fetchdf()
+    con.close()
+    return df
+
+def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT receiver_player_id AS player_id, receiver_player_name AS player, posteam AS team,
+                   AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            GROUP BY receiver_player_id, receiver_player_name, posteam
+            HAVING COUNT(*) >= ?
+        ),
+        cumul AS (
+            SELECT receiver_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
+            FROM plays
+            WHERE season = ? AND week <= ? AND pass = 1 AND receiver_player_id IS NOT NULL
+            GROUP BY receiver_player_id
+        )
+        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
+        FROM weekly w
+        JOIN cumul c ON w.player_id = c.player_id
+        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, min_targets_week, season, week, season]).fetchdf()
+    con.close()
+    return df
+
+def get_social_best_offense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT posteam AS team, AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        ),
+        cumul AS (
+            SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+            GROUP BY posteam
+        )
+        SELECT w.team, c.epa_offense
+        FROM weekly w JOIN cumul c ON w.team = c.team
+        ORDER BY w.epa_week DESC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+# NOTE AUDIT : une deuxième définition de cette fonction existait plus bas dans
+# l'ancien fichier et utilisait une moyenne saison complète au lieu du cumul
+# semaine 1 → semaine sélectionnée. Elle écrasait silencieusement celle-ci
+# (Python garde la dernière définition d'une fonction dupliquée), ce qui cassait
+# la cohérence avec les 4 fonctions sœurs ci-dessus. Supprimée lors de l'audit.
+def get_social_best_defense_week(season: int, week: int):
+    con = get_connection()
+    query = """
+        WITH weekly AS (
+            SELECT defteam AS team, AVG(epa) AS epa_week
+            FROM plays
+            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        ),
+        cumul AS (
+            SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed
+            FROM plays
+            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
+            GROUP BY defteam
+        )
+        SELECT w.team, c.epa_allowed
+        FROM weekly w JOIN cumul c ON w.team = c.team
+        ORDER BY w.epa_week ASC
+        LIMIT 3
+    """
+    df = con.execute(query, [season, week, season, week]).fetchdf()
+    con.close()
+    return df
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HOME — PAGE D'ACCUEIL
+# ──────────────────────────────────────────────────────────────────────────────
 
 def get_home_stats():
     """Chiffres réels de la base, pour le bandeau de la page d'accueil."""
@@ -522,208 +1541,35 @@ def get_home_stats():
         "total_players": int(total_players),
     }
 
-def get_player_bio(player_id: str, season: int):
-    """Bio du joueur telle qu'au moment de la saison donnée. Si absente
-    (joueur non présent au roster cette saison précise), repli sur la
-    saison connue la plus proche."""
+def get_home_current_season():
+    """Saison la plus récente ayant au moins un match joué (évite de
+    pointer sur une saison à venir sans résultats, comme 2026 mi-année)."""
     con = get_connection()
     query = """
-        SELECT player_name, team, position, age, height, weight,
-               college, jersey_number, years_exp, headshot_url
-        FROM rosters
-        WHERE player_id = ? AND season = ?
+        SELECT MAX(season) AS season FROM games
+        WHERE home_score IS NOT NULL AND away_score IS NOT NULL
     """
-    df = con.execute(query, [player_id, season]).fetchdf()
-    if df.empty:
-        query_fallback = """
-            SELECT player_name, team, position, age, height, weight,
-                   college, jersey_number, years_exp, headshot_url
-            FROM rosters
-            WHERE player_id = ?
-            ORDER BY ABS(season - ?) ASC
-            LIMIT 1
-        """
-        df = con.execute(query_fallback, [player_id, season]).fetchdf()
+    df = con.execute(query).fetchdf()
     con.close()
-    return df
+    return int(df["season"].iloc[0])
 
-
-def get_player_passing_season(player_id: str, season: int):
+def get_home_top_teams(season: int, limit: int = 7):
     con = get_connection()
     query = """
-        SELECT
-            COUNT(*) FILTER (WHERE pass = 1) AS tentatives,
-            COUNT(*) FILTER (WHERE complete_pass = 1) AS completions,
-            SUM(passing_yards) AS yards,
-            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
-            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
-            ROUND(AVG(epa) FILTER (WHERE qb_dropback = 1), 3) AS epa_per_play,
-            ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe,
-            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
-            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks
+        SELECT posteam AS team, AVG(epa) AS epa_offense
         FROM plays
-        WHERE season = ? AND passer_player_id = ?
+        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
+        GROUP BY posteam
+        ORDER BY epa_offense DESC
+        LIMIT ?
     """
-    df = con.execute(query, [season, player_id]).fetchdf()
+    df = con.execute(query, [season, limit]).fetchdf()
     con.close()
     return df
 
-
-def get_player_pressure_season(player_id: str, season: int):
-    con = get_connection()
-    query = """
-        SELECT
-            COUNT(*) FILTER (WHERE qb_dropback = 1) AS dropbacks,
-            SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) AS pressions_subies,
-            SUM(CAST(sack AS DOUBLE)) AS sacks_subis,
-            ROUND(
-                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
-                / NULLIF(COUNT(*) FILTER (WHERE qb_dropback = 1), 0),
-                3
-            ) AS taux_pression
-        FROM plays
-        WHERE season = ? AND passer_player_id = ?
-    """
-    df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
-    return df
-
-
-def get_player_rushing_season(player_id: str, season: int):
-    con = get_connection()
-    query = """
-        SELECT
-            COUNT(*) FILTER (WHERE rush = 1) AS courses,
-            SUM(rushing_yards) AS yards,
-            COUNT(*) FILTER (WHERE rush = 1 AND touchdown = 1) AS td,
-            ROUND(AVG(epa) FILTER (WHERE rush = 1), 3) AS epa_per_play
-        FROM plays
-        WHERE season = ? AND rusher_player_id = ?
-    """
-    df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
-    return df
-
-
-def get_player_receiving_season(player_id: str, season: int):
-    con = get_connection()
-    query = """
-        SELECT
-            COUNT(*) FILTER (WHERE pass = 1) AS cibles,
-            COUNT(*) FILTER (WHERE complete_pass = 1) AS receptions,
-            SUM(receiving_yards) AS yards,
-            COUNT(*) FILTER (WHERE complete_pass = 1 AND touchdown = 1) AS td,
-            ROUND(AVG(epa) FILTER (WHERE pass = 1), 3) AS epa_per_play,
-            ROUND(AVG(air_yards) FILTER (WHERE pass = 1), 1) AS air_yards_moy,
-            ROUND(AVG(yards_after_catch) FILTER (WHERE complete_pass = 1), 1) AS yac_moy
-        FROM plays
-        WHERE season = ? AND receiver_player_id = ?
-    """
-    df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
-    return df
-
-
-def get_player_weekly_trend(player_id: str, season: int, role: str):
-    """role : 'passing', 'rushing' ou 'receiving' — détermine la colonne
-    d'identifiant et le filtre de type de jeu à utiliser."""
-    con = get_connection()
-    colonne_id = {
-        "passing": "passer_player_id",
-        "rushing": "rusher_player_id",
-        "receiving": "receiver_player_id",
-    }[role]
-    filtre_type = {
-        "passing": "qb_dropback = 1",
-        "rushing": "rush = 1",
-        "receiving": "pass = 1",
-    }[role]
-    query = f"""
-        SELECT week, ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
-        FROM plays
-        WHERE season = ? AND {colonne_id} = ? AND {filtre_type}
-        GROUP BY week
-        ORDER BY week
-    """
-    df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
-    return df
-
-
-
-def render_top_players_list(df):
-    if df.empty:
-        st.info("Aucune donnée disponible.")
-        return
-
-    colors = get_team_colors()
-    logos = get_team_logos()
-
-    rows_html = ""
-    for i, row in df.reset_index(drop=True).iterrows():
-        team = row["team"]
-        couleur = colors.get(team, "#374151")
-        logo = logos.get(team, "")
-        photo = row.get("photo_url")
-        nom = row["player"]
-        position = row["position"]
-        valeur = row["epa_per_play"]
-
-        if isinstance(photo, str) and photo:
-            avatar = (
-                f'<img src="{photo}" style="width:32px;height:32px;border-radius:50%;'
-                f'object-fit:cover;border:2px solid {couleur};">'
-            )
-        else:
-            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
-            avatar = (
-                f'<div style="width:32px;height:32px;border-radius:50%;background:{couleur};color:white;'
-                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">{initiales}</div>'
-            )
-
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
-            <div style="width:22px;height:22px;border-radius:50%;background:{couleur};color:white;
-                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">{i+1}</div>
-            {avatar}
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
-                <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;">
-                    <img src="{logo}" height="12">{team} · {position}
-                </div>
-            </div>
-            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{valeur:.3f}</div>
-        </div>
-        """
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(58 * len(df) + 20, 340))
-
-def get_top_rb_season_yards(season: int, min_carries: int = 50):
-    con = get_connection()
-    query = """
-        SELECT p.rusher_player_name AS player, p.posteam AS team,
-               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-        GROUP BY p.rusher_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY yards DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
-    return df
-
+# Position réelle lue depuis rosters (pas déduite du rôle offensif) : un
+# receveur de passes peut être WR, TE ou RB selon le joueur — hardcoder 'WR'
+# affichait à tort des tight ends comme WR, corrigé via COALESCE(ANY_VALUE(...)).
 def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
     """Top joueurs offensifs par yards bruts. """
     con = get_connection()
@@ -778,217 +1624,26 @@ def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
     con.close()
     return df
 
-
-def render_top_players_list(df):
-    if df.empty:
-        st.info("Aucune donnée disponible.")
-        return
-
-    colors = get_team_colors()
-    logos = get_team_logos()
-
-    rows_html = ""
-    for i, row in df.reset_index(drop=True).iterrows():
-        team = row["team"]
-        couleur = colors.get(team, "#374151")
-        logo = logos.get(team, "")
-        photo = row.get("photo_url")
-        nom = row["player"]
-        position = row["position"]
-        valeur = row["yards"]
-
-        if isinstance(photo, str) and photo:
-            avatar = (
-                f'<img src="{photo}" style="width:32px;height:32px;border-radius:50%;'
-                f'object-fit:cover;border:2px solid {couleur};">'
-            )
-        else:
-            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
-            avatar = (
-                f'<div style="width:32px;height:32px;border-radius:50%;background:{couleur};color:white;'
-                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">{initiales}</div>'
-            )
-
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
-            <div style="width:22px;height:22px;border-radius:50%;background:{couleur};color:white;
-                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">{i+1}</div>
-            {avatar}
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
-                <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;">
-                    <img src="{logo}" height="12">{team} · {position}
-                </div>
-            </div>
-            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{int(valeur):,}</div>
-        </div>
-        """
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(58 * len(df) + 20, 340))
-
-
-def get_top_wr_season_yards(season: int, min_targets: int = 30):
+def get_home_recent_games(season: int, limit: int = 7):
     con = get_connection()
     query = """
-        SELECT p.receiver_player_name AS player, p.posteam AS team,
-               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-        GROUP BY p.receiver_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY yards DESC
-        LIMIT 3
+        SELECT week, gameday, home_team, away_team, home_score, away_score
+        FROM games
+        WHERE season = ? AND home_score IS NOT NULL AND away_score IS NOT NULL
+        ORDER BY gameday DESC
+        LIMIT ?
     """
-    df = con.execute(query, [season, min_targets]).fetchdf()
+    df = con.execute(query, [season, limit]).fetchdf()
     con.close()
     return df
 
 
-def get_top_teams_offense_yards_season(season: int):
-    con = get_connection()
-    query = """
-        SELECT posteam AS team, SUM(yards_gained) AS yards, COUNT(*) AS plays
-        FROM plays
-        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-        GROUP BY posteam
-        ORDER BY yards DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season]).fetchdf()
-    con.close()
-    return df
+# ──────────────────────────────────────────────────────────────────────────────
+# RENDU VISUEL (HTML / iframe)
+# ──────────────────────────────────────────────────────────────────────────────
 
-
-# ─────────────────────────────────────────────────────────────
-# Requêtes annuelles (Annual Recap) — EPA sur la saison entière
-# ─────────────────────────────────────────────────────────────
-
-def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
-    con = get_connection()
-    query = """
-        SELECT p.passer_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
-        GROUP BY p.passer_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, min_dropbacks]).fetchdf()
-    con.close()
-    return df
-
-
-def get_top_rb_season_epa(season: int, min_carries: int = 50):
-    con = get_connection()
-    query = """
-        SELECT p.rusher_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-        GROUP BY p.rusher_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
-    return df
-
-
-def get_top_wr_season_epa(season: int, min_targets: int = 30):
-    con = get_connection()
-    query = """
-        SELECT p.receiver_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-        GROUP BY p.receiver_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, min_targets]).fetchdf()
-    con.close()
-    return df
-
-def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
-    con = get_connection()
-    query = """
-        SELECT p.passer_player_name AS player, p.posteam AS team,
-               SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
-        GROUP BY p.passer_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY yards DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
-    con.close()
-    return df
-
-
-def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
-    con = get_connection()
-    query = """
-        SELECT p.rusher_player_name AS player, p.posteam AS team,
-               SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-        GROUP BY p.rusher_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY yards DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_carries]).fetchdf()
-    con.close()
-    return df
-
-
-def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
-    con = get_connection()
-    query = """
-        SELECT p.receiver_player_name AS player, p.posteam AS team,
-               SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-        GROUP BY p.receiver_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY yards DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_targets]).fetchdf()
-    con.close()
-    return df
-
-# ─────────────────────────────────────────────────────────────
-# Traduction des colonnes et style des tableaux
-# ─────────────────────────────────────────────────────────────
-
+# Traduction des noms de colonnes techniques vers un affichage lisible en
+# français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
 TRADUCTIONS_COLONNES = {
     "team": "Équipe",
     "team_name": "Nom",
@@ -1130,7 +1785,9 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .hide(axis="index")
     )
 
-
+# st.dataframe() ignore le style des en-têtes (set_table_styles) d'un Styler —
+# il ne respecte que les couleurs cellule par cellule. D'où le rendu HTML brut.
+# Contrepartie assumée : pas de tri interactif au clic sur une colonne.
 def render_table(styled_df):
     """Affiche un Styler pandas en HTML brut. Nécessaire car st.dataframe()
     ignore le style des en-têtes (set_table_styles) d'un Styler — il ne
@@ -1139,13 +1796,13 @@ def render_table(styled_df):
     html = styled_df.to_html()
     st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
 
-
 def render_podium(df, metric_col, decimals=3):
     """Podium HTML pour un top 3 de joueurs : 1er au centre (plus haut), 2e à
     gauche, 3e à droite. Utilise photo_url si présente dans df, sinon un avatar
     avec les initiales du joueur, coloré aux couleurs de l'équipe.
 
-    Rendu via components.html (iframe isolé) pour éviter le scintillement
+    Rendu via st.iframe (composant isolé, sans partage de style avec la page)
+    pour éviter le scintillement
     du diffing React de st.markdown sur du HTML complexe. L'iframe n'hérite
     d'aucun style de la page parente : police et fond sont donc définis
     explicitement ci-dessous.
@@ -1229,887 +1886,7 @@ def render_podium(df, metric_col, decimals=3):
     </body>
     </html>
     """
-    components.html(html, height=320, scrolling=False)
-
-def get_all_teams():
-    """Seules les 32 équipes actives sont retenues : celles ayant joué lors
-    de la saison la plus récente en base. Filtre les franchises historiques
-    (ex. St. Louis Rams, Oakland Raiders) qui existent dans le référentiel
-    teams mais n'ont plus joué sous ce nom depuis leur déménagement."""
-    con = get_connection()
-    query = """
-        WITH equipes_actives AS (
-            SELECT DISTINCT posteam AS team_abbr FROM plays
-            WHERE season = (SELECT MAX(season) FROM plays)
-        )
-        SELECT t.team_abbr, t.team_name
-        FROM teams t
-        JOIN equipes_actives e ON t.team_abbr = e.team_abbr
-        ORDER BY t.team_name
-    """
-    df = con.execute(query).fetchdf()
-    con.close()
-    return df
-
-def get_games_for_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        SELECT game_id, week, gameday, home_team, away_team, home_score, away_score
-        FROM games
-        WHERE season = ? AND week = ?
-        ORDER BY gameday
-    """
-    df = con.execute(query, [season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_game_info(game_id: str):
-    con = get_connection()
-    query = """
-        SELECT season, week, gameday, home_team, away_team, home_score, away_score,
-               roof, surface, temp, wind, stadium, home_coach, away_coach, overtime
-        FROM games WHERE game_id = ?
-    """
-    df = con.execute(query, [game_id]).fetchdf()
-    con.close()
-    return df
-
-def get_team_epa_rank_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        SELECT posteam AS team, AVG(epa) AS epa_offense
-        FROM plays
-        WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-        GROUP BY posteam
-    """
-    df = con.execute(query, [season, week]).fetchdf()
-    con.close()
-    if df.empty:
-        return df
-    df = df.sort_values(["epa_offense", "team"], ascending=[False, True]).reset_index(drop=True)
-    df["rank"] = df.index + 1
-    return df
-
-
-def get_team_weekly_movement(season: int, week: int):
-    """Classement EPA offensif de la semaine, avec évolution de rang vs
-    la semaine précédente de la même saison."""
-    current = get_team_epa_rank_week(season, week)
-    if current.empty:
-        return current
-    prev_map = {}
-    if week > 1:
-        previous = get_team_epa_rank_week(season, week - 1)
-        if not previous.empty:
-            prev_map = dict(zip(previous["team"], previous["rank"]))
-    current["rank_precedent"] = current["team"].map(prev_map)
-    current["evolution"] = current["rank_precedent"] - current["rank"]
-    return current
-def get_player_season_epa(player_id: str, season: int, role: str):
-    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
-    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
-    con = get_connection()
-    query = f"""
-        SELECT ROUND(AVG(epa), 3) AS epa_per_play
-        FROM plays
-        WHERE season = ? AND {colonne_id} = ? AND {filtre}
-    """
-    df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
-    return df
-
-
-def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT passer_player_id AS player_id, passer_player_name AS player, posteam AS team,
-                   AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
-            GROUP BY passer_player_id, passer_player_name, posteam
-            HAVING COUNT(*) >= ?
-        ),
-        cumul AS (
-            SELECT passer_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
-            FROM plays
-            WHERE season = ? AND week <= ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
-            GROUP BY passer_player_id
-        )
-        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
-        FROM weekly w
-        JOIN cumul c ON w.player_id = c.player_id
-        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
-        ORDER BY w.epa_week DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, min_dropbacks_week, season, week, season]).fetchdf()
-    con.close()
-    return df
-
-
-def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT rusher_player_id AS player_id, rusher_player_name AS player, posteam AS team,
-                   AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND rush = 1 AND rusher_player_id IS NOT NULL
-            GROUP BY rusher_player_id, rusher_player_name, posteam
-            HAVING COUNT(*) >= ?
-        ),
-        cumul AS (
-            SELECT rusher_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
-            FROM plays
-            WHERE season = ? AND week <= ? AND rush = 1 AND rusher_player_id IS NOT NULL
-            GROUP BY rusher_player_id
-        )
-        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
-        FROM weekly w
-        JOIN cumul c ON w.player_id = c.player_id
-        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
-        ORDER BY w.epa_week DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, min_carries_week, season, week, season]).fetchdf()
-    con.close()
-    return df
-
-
-def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT receiver_player_id AS player_id, receiver_player_name AS player, posteam AS team,
-                   AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND pass = 1 AND receiver_player_id IS NOT NULL
-            GROUP BY receiver_player_id, receiver_player_name, posteam
-            HAVING COUNT(*) >= ?
-        ),
-        cumul AS (
-            SELECT receiver_player_id AS player_id, ROUND(AVG(epa), 3) AS epa_per_play
-            FROM plays
-            WHERE season = ? AND week <= ? AND pass = 1 AND receiver_player_id IS NOT NULL
-            GROUP BY receiver_player_id
-        )
-        SELECT w.player, w.team, c.epa_per_play, r.headshot_url AS photo_url
-        FROM weekly w
-        JOIN cumul c ON w.player_id = c.player_id
-        LEFT JOIN rosters r ON w.player_id = r.player_id AND r.season = ?
-        ORDER BY w.epa_week DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, min_targets_week, season, week, season]).fetchdf()
-    con.close()
-    return df
-
-
-def get_social_best_offense_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT posteam AS team, AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-            GROUP BY posteam
-        ),
-        cumul AS (
-            SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense
-            FROM plays
-            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-            GROUP BY posteam
-        )
-        SELECT w.team, c.epa_offense
-        FROM weekly w JOIN cumul c ON w.team = c.team
-        ORDER BY w.epa_week DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_social_best_defense_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT defteam AS team, AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-            GROUP BY defteam
-        ),
-        cumul AS (
-            SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed
-            FROM plays
-            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-            GROUP BY defteam
-        )
-        SELECT w.team, c.epa_allowed
-        FROM weekly w JOIN cumul c ON w.team = c.team
-        ORDER BY w.epa_week ASC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
-    return df
-
-def get_social_best_defense_week(season: int, week: int):
-    con = get_connection()
-    query = """
-        WITH weekly AS (
-            SELECT defteam AS team, AVG(epa) AS epa_week
-            FROM plays
-            WHERE season = ? AND week = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-            GROUP BY defteam
-        ),
-        season AS (
-            SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed
-            FROM plays
-            WHERE season = ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-            GROUP BY defteam
-        )
-        SELECT w.team, s.epa_allowed
-        FROM weekly w JOIN season s ON w.team = s.team
-        ORDER BY w.epa_week ASC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, week, season]).fetchdf()
-    con.close()
-    return df
-
-def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int = 5):
-    con = get_connection()
-    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
-    nom_col = {"passing": "passer_player_name", "rushing": "rusher_player_name", "receiving": "receiver_player_name"}[role]
-    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
-    query = f"""
-        SELECT {colonne_id} AS player_id, ANY_VALUE({nom_col}) AS player, ANY_VALUE(posteam) AS team,
-               ROUND(AVG(epa), 3) AS epa_per_play, COUNT(*) AS volume
-        FROM plays
-        WHERE season = ? AND week = ? AND {filtre} AND {colonne_id} IS NOT NULL
-        GROUP BY {colonne_id}
-        HAVING COUNT(*) >= ?
-    """
-    df = con.execute(query, [season, week, min_plays]).fetchdf()
-    con.close()
-    if df.empty:
-        return df
-    df = df.sort_values(["epa_per_play", "player_id"], ascending=[False, True]).reset_index(drop=True)
-    df["rank"] = df.index + 1
-    return df
-def get_team_epa_cumulative_through_week(season: int, week: int):
-    """EPA offensif/défensif moyen depuis la semaine 1 jusqu'à la semaine
-    sélectionnée incluse — pas la saison entière."""
-    con = get_connection()
-    query = """
-        WITH offense AS (
-            SELECT posteam AS team, AVG(epa) AS epa_offense
-            FROM plays
-            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-            GROUP BY posteam
-        ),
-        defense AS (
-            SELECT defteam AS team, AVG(epa) AS epa_defense
-            FROM plays
-            WHERE season = ? AND week <= ? AND play_type IN ('pass', 'run') AND defteam IS NOT NULL
-            GROUP BY defteam
-        )
-        SELECT o.team, o.epa_offense, d.epa_defense
-        FROM offense o JOIN defense d ON o.team = d.team
-    """
-    df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
-    return df
-
-
-def get_player_epa_cumulative_through_week(player_id: str, season: int, week: int, role: str):
-    colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
-    filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
-    con = get_connection()
-    query = f"""
-        SELECT ROUND(AVG(epa), 3) AS epa_per_play
-        FROM plays
-        WHERE season = ? AND week <= ? AND {colonne_id} = ? AND {filtre}
-    """
-    df = con.execute(query, [season, week, player_id]).fetchdf()
-    con.close()
-    return df
-
-def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int = 5):
-    current = get_player_epa_rank_week(season, week, role, min_plays)
-    if current.empty:
-        return current
-    prev_map = {}
-    if week > 1:
-        previous = get_player_epa_rank_week(season, week - 1, role, min_plays)
-        if not previous.empty:
-            prev_map = dict(zip(previous["player_id"], previous["rank"]))
-    current["rank_precedent"] = current["player_id"].map(prev_map)
-    current["evolution"] = current["rank_precedent"] - current["rank"]
-    return current
-
-
-def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
-    """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
-    classé la semaine d'avant (nouveau qualifié ou retour de blessure)."""
-    if df.empty:
-        st.info("Aucune donnée disponible.")
-        return
-
-    colors = get_team_colors()
-    logos = get_team_logos()
-
-    rows_html = ""
-    for _, row in df.head(10).iterrows():
-        team = row["team"]
-        couleur = colors.get(team, "#374151")
-        logo = logos.get(team, "")
-        rang = int(row["rank"])
-        valeur = row[value_col]
-        evolution = row.get("evolution")
-
-        if evolution != evolution:
-            badge = '<span style="color:#94A3B8;font-size:11px;font-weight:700;">NEW</span>'
-        elif evolution > 0:
-            badge = f'<span style="color:#16A34A;font-size:12px;font-weight:700;">▲ {int(evolution)}</span>'
-        elif evolution < 0:
-            badge = f'<span style="color:#DC2626;font-size:12px;font-weight:700;">▼ {int(abs(evolution))}</span>'
-        else:
-            badge = '<span style="color:#94A3B8;font-size:12px;">–</span>'
-
-        nom_affiche = f"{row['player']} · {team}" if is_player else team
-
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
-            <div style="width:20px;font-weight:800;color:{couleur};font-size:14px;">{rang}</div>
-            <img src="{logo}" height="20">
-            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>
-            <div style="width:44px;text-align:center;">{badge}</div>
-            <div style="width:60px;text-align:right;font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:13px;">{valeur:.{decimals}f}</div>
-        </div>
-        """
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
-
-def get_game_win_probability(game_id: str):
-    """Win probability du point de vue de l'équipe à domicile, reconstruite
-    depuis wp (probabilité de l'équipe en possession) selon qui a le ballon."""
-    con = get_connection()
-    query = """
-        SELECT play_id,
-               CASE WHEN posteam = home_team THEN wp ELSE 1 - wp END AS home_wp
-        FROM plays
-        WHERE game_id = ? AND wp IS NOT NULL
-        ORDER BY play_id
-    """
-    df = con.execute(query, [game_id]).fetchdf()
-    con.close()
-    df["progression"] = range(1, len(df) + 1)
-    return df
-
-
-def get_game_epa_cumulative(game_id: str):
-    con = get_connection()
-    query = """
-        SELECT play_id, posteam,
-               SUM(epa) OVER (PARTITION BY posteam ORDER BY play_id) AS epa_cumule
-        FROM plays
-        WHERE game_id = ? AND posteam IS NOT NULL AND epa IS NOT NULL
-        ORDER BY play_id
-    """
-    df = con.execute(query, [game_id]).fetchdf()
-    con.close()
-    df["progression"] = df.groupby("posteam").cumcount() + 1
-    return df
-
-
-def get_game_score_progression(game_id: str):
-    """Écart de score du point de vue de l'équipe à domicile, reconstruit
-    depuis score_differential (qui est du point de vue de l'équipe en
-    possession, donc inversé quand c'est l'équipe visiteuse qui l'a)."""
-    con = get_connection()
-    query = """
-        SELECT play_id,
-               CASE WHEN posteam = home_team THEN score_differential ELSE -score_differential END AS ecart_domicile
-        FROM plays
-        WHERE game_id = ? AND score_differential IS NOT NULL
-        ORDER BY play_id
-    """
-    df = con.execute(query, [game_id]).fetchdf()
-    con.close()
-    df["progression"] = range(1, len(df) + 1)
-    return df
-
-
-def get_game_drives(game_id: str):
-    con = get_connection()
-    query = """
-        WITH bounds AS (
-            SELECT drive, ANY_VALUE(posteam) AS team,
-                   MAX(drive_play_count) AS plays,
-                   ANY_VALUE(fixed_drive_result) AS resultat,
-                   ANY_VALUE(drive_start_yard_line) AS depart,
-                   ANY_VALUE(drive_time_of_possession) AS possession,
-                   MIN(play_id) AS first_play_id,
-                   MAX(play_id) AS last_play_id
-            FROM plays
-            WHERE game_id = ? AND drive IS NOT NULL
-            GROUP BY drive
-        )
-        SELECT b.drive, b.team, b.plays, b.resultat, b.depart, b.possession,
-               p_start.total_home_score AS home_avant, p_start.total_away_score AS away_avant,
-               p_end.total_home_score AS score_domicile, p_end.total_away_score AS score_exterieur
-        FROM bounds b
-        JOIN plays p_start ON p_start.game_id = ? AND p_start.play_id = b.first_play_id
-        JOIN plays p_end ON p_end.game_id = ? AND p_end.play_id = b.last_play_id
-        ORDER BY b.drive
-    """
-    df = con.execute(query, [game_id, game_id, game_id]).fetchdf()
-    con.close()
-
-    if not df.empty:
-        # Points marqués sur ce drive = variation du total de points (les deux
-        # équipes confondues) entre le début et la fin du drive — fonctionne
-        # même en cas de score défensif (pick-six, etc.).
-        df["points_marques"] = (
-            (df["score_domicile"] + df["score_exterieur"])
-            - (df["home_avant"] + df["away_avant"])
-        ).fillna(0).astype(int)
-        df["plays"] = df["plays"].fillna(0).astype(int)
-        df["score_domicile"] = df["score_domicile"].fillna(0).astype(int)
-        df["score_exterieur"] = df["score_exterieur"].fillna(0).astype(int)
-        df = df.drop(columns=["home_avant", "away_avant"])
-
-    return df
-
-
-def get_game_top_performer(game_id: str, team: str, season: int, role: str):
-    """role : 'passing', 'rushing' ou 'receiving'."""
-    con = get_connection()
-    colonnes = {
-        "passing": ("passer_player_name", "passer_player_id", "passing_yards", "qb_dropback = 1", "QB"),
-        "rushing": ("rusher_player_name", "rusher_player_id", "rushing_yards", "rush = 1", "RB"),
-        "receiving": ("receiver_player_name", "receiver_player_id", "receiving_yards", "pass = 1", "REC"),
-    }
-    nom_col, id_col, yards_col, filtre, poste_defaut = colonnes[role]
-    query = f"""
-        SELECT p.{nom_col} AS player, SUM(p.{yards_col}) AS yards, ROUND(AVG(p.epa), 3) AS epa_per_play,
-               ANY_VALUE(r.headshot_url) AS photo_url,
-               COALESCE(ANY_VALUE(r.position), '{poste_defaut}') AS position
-        FROM plays p
-        LEFT JOIN rosters r ON p.{id_col} = r.player_id AND r.season = ?
-        WHERE p.game_id = ? AND p.posteam = ? AND p.{filtre} AND p.{id_col} IS NOT NULL
-        GROUP BY p.{nom_col}
-        ORDER BY yards DESC
-        LIMIT 1
-    """
-    df = con.execute(query, [season, game_id, team]).fetchdf()
-    con.close()
-    return df
-
-
-def get_game_play_by_play(game_id: str, quarter: int | None = None):
-    con = get_connection()
-    if quarter:
-        query = """
-            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
-            FROM plays
-            WHERE game_id = ? AND "desc" IS NOT NULL AND qtr = ?
-            ORDER BY play_id
-        """
-        df = con.execute(query, [game_id, quarter]).fetchdf()
-    else:
-        query = """
-            SELECT qtr, down, ydstogo, yardline_100, "desc", ROUND(epa, 3) AS epa, posteam
-            FROM plays
-            WHERE game_id = ? AND "desc" IS NOT NULL
-            ORDER BY play_id
-        """
-        df = con.execute(query, [game_id]).fetchdf()
-    con.close()
-    return df
-
-def get_team_schedule(team: str, season: int):
-    """Calendrier complet d'une équipe pour une saison, normalisé du point
-    de vue de cette équipe (team_score/opp_score plutôt que home/away).
-    Sert à la fois pour le bilan, les derniers matchs et les prochains matchs."""
-    con = get_connection()
-    query = """
-        SELECT
-            week, gameday,
-            CASE WHEN home_team = ? THEN away_team ELSE home_team END AS opponent,
-            CASE WHEN home_team = ? THEN TRUE ELSE FALSE END AS domicile,
-            CASE WHEN home_team = ? THEN home_score ELSE away_score END AS team_score,
-            CASE WHEN home_team = ? THEN away_score ELSE home_score END AS opp_score
-        FROM games
-        WHERE season = ? AND (home_team = ? OR away_team = ?)
-        ORDER BY week
-    """
-    df = con.execute(query, [team, team, team, team, season, team, team]).fetchdf()
-    con.close()
-    df["joue"] = df["team_score"].notna() & df["opp_score"].notna()
-    return df
-
-
-def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
-    con = get_connection()
-    query = """
-        SELECT p.passer_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
-        GROUP BY p.passer_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
-    con.close()
-    return df
-
-TRADUCTION_SURFACE = {
-    "grass": "Pelouse naturelle",
-    "fieldturf": "Gazon synthétique (FieldTurf)",
-    "turf": "Gazon synthétique",
-    "astroturf": "Gazon synthétique (AstroTurf)",
-    "sportturf": "Gazon synthétique (SportTurf)",
-    "matrixturf": "Gazon synthétique (MatrixTurf)",
-    "a_turf": "Gazon synthétique",
-    "dessograss": "Pelouse hybride (Desso GrassMaster)",
-}
-
-
-def traduire_surface(valeur: str) -> str:
-    if not isinstance(valeur, str):
-        return "—"
-    return TRADUCTION_SURFACE.get(valeur.lower(), valeur.capitalize())
-
-def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
-    con = get_connection()
-    query = """
-        SELECT p.rusher_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
-        GROUP BY p.rusher_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_carries]).fetchdf()
-    con.close()
-    return df
-
-
-def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
-    con = get_connection()
-    query = """
-        SELECT p.receiver_player_name AS player, p.posteam AS team,
-               ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
-               ANY_VALUE(r.headshot_url) AS photo_url
-        FROM plays p
-        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
-        WHERE p.season = ? AND p.posteam = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
-        GROUP BY p.receiver_player_name, p.posteam
-        HAVING COUNT(*) >= ?
-        ORDER BY epa_per_play DESC
-        LIMIT 3
-    """
-    df = con.execute(query, [season, team, min_targets]).fetchdf()
-    con.close()
-    return df
-
-
-def get_team_defensive_summary(team: str, season: int):
-    """Résumé défensif au niveau équipe. Pas de détail par joueur :
-    sack_player_id et les colonnes de tackle ne sont pas dans le schéma."""
-    con = get_connection()
-    query = """
-        SELECT
-            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
-            COUNT(*) FILTER (WHERE fumble_lost = 1) AS fumbles_forces,
-            SUM(CAST(sack AS DOUBLE)) AS sacks,
-            ROUND(
-                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
-                / NULLIF(SUM(CASE WHEN pass = 1 THEN 1 ELSE 0 END), 0),
-                3
-            ) AS taux_pression
-        FROM plays
-        WHERE season = ? AND defteam = ?
-    """
-    df = con.execute(query, [season, team]).fetchdf()
-    con.close()
-    return df
-def get_qb_full_rankings(season: int, min_dropbacks: int = 100):
-    con = get_connection()
-    query = """
-        SELECT passer_player_id AS player_id,
-               SUM(passing_yards) AS yards,
-               ROUND(AVG(epa), 3) AS epa_per_play,
-               ROUND(AVG(cpoe) FILTER (WHERE pass = 1), 1) AS cpoe
-        FROM plays
-        WHERE season = ? AND qb_dropback = 1 AND passer_player_id IS NOT NULL
-        GROUP BY passer_player_id
-        HAVING COUNT(*) >= ?
-    """
-    df = con.execute(query, [season, min_dropbacks]).fetchdf()
-    con.close()
-    return df
-
-
-def get_rb_full_rankings(season: int, min_carries: int = 50):
-    con = get_connection()
-    query = """
-        SELECT rusher_player_id AS player_id,
-               SUM(rushing_yards) AS yards,
-               ROUND(AVG(epa), 3) AS epa_per_play
-        FROM plays
-        WHERE season = ? AND rush = 1 AND rusher_player_id IS NOT NULL
-        GROUP BY rusher_player_id
-        HAVING COUNT(*) >= ?
-    """
-    df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
-    return df
-
-
-def get_wr_full_rankings(season: int, min_targets: int = 30):
-    con = get_connection()
-    query = """
-        SELECT receiver_player_id AS player_id,
-               SUM(receiving_yards) AS yards,
-               ROUND(AVG(epa), 3) AS epa_per_play
-        FROM plays
-        WHERE season = ? AND pass = 1 AND receiver_player_id IS NOT NULL
-        GROUP BY receiver_player_id
-        HAVING COUNT(*) >= ?
-    """
-    df = con.execute(query, [season, min_targets]).fetchdf()
-    con.close()
-    return df
-
-def get_all_teams_records(season: int):
-    """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
-    la table games (un match compte pour les deux équipes via UNION ALL)."""
-    con = get_connection()
-    query = """
-        WITH normalized AS (
-            SELECT home_team AS team, home_score AS team_score, away_score AS opp_score
-            FROM games WHERE season = ?
-            UNION ALL
-            SELECT away_team AS team, away_score AS team_score, home_score AS opp_score
-            FROM games WHERE season = ?
-        )
-        SELECT team,
-            SUM(CASE WHEN team_score > opp_score THEN 1 ELSE 0 END) AS wins,
-            SUM(CASE WHEN team_score < opp_score THEN 1 ELSE 0 END) AS losses,
-            SUM(CASE WHEN team_score = opp_score THEN 1 ELSE 0 END) AS ties
-        FROM normalized
-        WHERE team_score IS NOT NULL AND opp_score IS NOT NULL
-        GROUP BY team
-    """
-    df = con.execute(query, [season, season]).fetchdf()
-    con.close()
-    total = df["wins"] + df["losses"] + df["ties"]
-    df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
-    return df
-
-def get_rank_label(df_rankings, player_id: str, metric_col: str):
-    """Retourne '#3 / 24' si le joueur est qualifié pour ce classement,
-    None sinon (échantillon trop petit ou stat non applicable)."""
-    if df_rankings.empty or player_id not in df_rankings["player_id"].values:
-        return None
-    df_sorted = df_rankings.sort_values(metric_col, ascending=False).reset_index(drop=True)
-    idx = df_sorted[df_sorted["player_id"] == player_id].index
-    if len(idx) == 0:
-        return None
-    rang = idx[0] + 1
-    total = len(df_sorted)
-    return f"#{rang} / {total}"
-
-def get_home_current_season():
-    """Saison la plus récente ayant au moins un match joué (évite de
-    pointer sur une saison à venir sans résultats, comme 2026 mi-année)."""
-    con = get_connection()
-    query = """
-        SELECT MAX(season) AS season FROM games
-        WHERE home_score IS NOT NULL AND away_score IS NOT NULL
-    """
-    df = con.execute(query).fetchdf()
-    con.close()
-    return int(df["season"].iloc[0])
-
-
-def get_home_top_teams(season: int, limit: int = 7):
-    con = get_connection()
-    query = """
-        SELECT posteam AS team, AVG(epa) AS epa_offense
-        FROM plays
-        WHERE season = ? AND play_type IN ('pass', 'run') AND posteam IS NOT NULL
-        GROUP BY posteam
-        ORDER BY epa_offense DESC
-        LIMIT ?
-    """
-    df = con.execute(query, [season, limit]).fetchdf()
-    con.close()
-    return df
-
-
-def get_home_recent_games(season: int, limit: int = 7):
-    con = get_connection()
-    query = """
-        SELECT week, gameday, home_team, away_team, home_score, away_score
-        FROM games
-        WHERE season = ? AND home_score IS NOT NULL AND away_score IS NOT NULL
-        ORDER BY gameday DESC
-        LIMIT ?
-    """
-    df = con.execute(query, [season, limit]).fetchdf()
-    con.close()
-    return df
-
-
-def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
-    if df.empty:
-        st.info("Aucune donnée disponible.")
-        return
-
-    colors = get_team_colors()
-    logos = get_team_logos()
-
-    rows_html = ""
-    for i, row in df.reset_index(drop=True).iterrows():
-        team = row["team"]
-        couleur = colors.get(team, "#374151")
-        logo = logos.get(team, "")
-        valeur = row[metric_col]
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
-            <div style="width:24px;height:24px;border-radius:50%;background:{couleur};color:white;
-                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">{i+1}</div>
-            <img src="{logo}" height="28">
-            <div style="flex:1;font-weight:600;color:#1E293B;">{team}</div>
-            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;">{valeur:.{decimals}f}</div>
-        </div>
-        """
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    components.html(html, height=min(60 * len(df) + 20, 360), scrolling=False)
-
-
-def render_recent_games_list(df):
-    if df.empty:
-        st.info("Aucun match disponible.")
-        return
-
-    logos = get_team_logos()
-
-    rows_html = ""
-    for _, row in df.iterrows():
-        home_logo = logos.get(row["home_team"], "")
-        away_logo = logos.get(row["away_team"], "")
-        rows_html += f"""
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
-            <div style="font-size:12px;color:#94A3B8;width:40px;">S{int(row['week'])}</div>
-            <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
-                <span style="font-weight:600;color:#1E293B;">{row['away_team']}</span>
-                <img src="{away_logo}" height="22">
-            </div>
-            <div style="font-weight:800;font-size:16px;color:#1E293B;padding:0 16px;font-family:'Space Mono',monospace;">
-                {int(row['away_score'])} – {int(row['home_score'])}
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex:1;">
-                <img src="{home_logo}" height="22">
-                <span style="font-weight:600;color:#1E293B;">{row['home_team']}</span>
-            </div>
-        </div>
-        """
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(58 * len(df) + 20, 340))	
-
-
-def render_game_performers(performers: list, couleur_equipe: str):
-    """performers : liste de (label_role, dataframe) pour une équipe."""
-    rows_html = ""
-    for label, df in performers:
-        if df.empty:
-            continue
-        row = df.iloc[0]
-        photo = row.get("photo_url")
-        nom = row["player"]
-        position = row["position"]
-        yards = int(row["yards"]) if row["yards"] == row["yards"] else 0
-        epa = row["epa_per_play"]
-
-        if isinstance(photo, str) and photo:
-            avatar = (
-                f'<img src="{photo}" style="width:36px;height:36px;border-radius:50%;'
-                f'object-fit:cover;border:2px solid {couleur_equipe};">'
-            )
-        else:
-            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
-            avatar = (
-                f'<div style="width:36px;height:36px;border-radius:50%;background:{couleur_equipe};color:white;'
-                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initiales}</div>'
-            )
-
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #E2E8F0;">
-            {avatar}
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>
-                <div style="font-size:11px;color:#64748B;">{position} · {label}</div>
-            </div>
-            <div style="text-align:right;">
-                <div style="font-weight:800;color:{couleur_equipe};font-family:'Space Mono',monospace;font-size:14px;">{yards} yds</div>
-                <div style="font-size:11px;color:#64748B;">EPA {epa:.3f}</div>
-            </div>
-        </div>
-        """
-
-    if not rows_html:
-        rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
-
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=190)
-
+    st.iframe(html, height=320)
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
@@ -2187,4 +1964,233 @@ def render_team_podium(df, metric_col, decimals=0):
     </body>
     </html>
     """
-    components.html(html, height=320, scrolling=False)
+    st.iframe(html, height=320)
+
+def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for i, row in df.reset_index(drop=True).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        valeur = row[metric_col]
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:24px;height:24px;border-radius:50%;background:{couleur};color:white;
+                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">{i+1}</div>
+            <img src="{logo}" height="28">
+            <div style="flex:1;font-weight:600;color:#1E293B;">{team}</div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;">{valeur:.{decimals}f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(60 * len(df) + 20, 360))
+
+def render_top_players_list(df):
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for i, row in df.reset_index(drop=True).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        photo = row.get("photo_url")
+        nom = row["player"]
+        position = row["position"]
+        valeur = row["yards"]
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:32px;height:32px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:32px;height:32px;border-radius:50%;background:{couleur};color:white;'
+                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">{initiales}</div>'
+            )
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:22px;height:22px;border-radius:50%;background:{couleur};color:white;
+                        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">{i+1}</div>
+            {avatar}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
+                <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;">
+                    <img src="{logo}" height="12">{team} · {position}
+                </div>
+            </div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;">{int(valeur):,}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(58 * len(df) + 20, 340))
+
+def render_recent_games_list(df):
+    if df.empty:
+        st.info("Aucun match disponible.")
+        return
+
+    logos = get_team_logos()
+
+    rows_html = ""
+    for _, row in df.iterrows():
+        home_logo = logos.get(row["home_team"], "")
+        away_logo = logos.get(row["away_team"], "")
+        rows_html += f"""
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+            <div style="font-size:12px;color:#94A3B8;width:40px;">S{int(row['week'])}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
+                <span style="font-weight:600;color:#1E293B;">{row['away_team']}</span>
+                <img src="{away_logo}" height="22">
+            </div>
+            <div style="font-weight:800;font-size:16px;color:#1E293B;padding:0 16px;font-family:'Space Mono',monospace;">
+                {int(row['away_score'])} – {int(row['home_score'])}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex:1;">
+                <img src="{home_logo}" height="22">
+                <span style="font-weight:600;color:#1E293B;">{row['home_team']}</span>
+            </div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(58 * len(df) + 20, 340))	
+
+def render_game_performers(performers: list, couleur_equipe: str):
+    """performers : liste de (label_role, dataframe) pour une équipe."""
+    rows_html = ""
+    for label, df in performers:
+        if df.empty:
+            continue
+        row = df.iloc[0]
+        photo = row.get("photo_url")
+        nom = row["player"]
+        position = row["position"]
+        yards = int(row["yards"]) if row["yards"] == row["yards"] else 0
+        epa = row["epa_per_play"]
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:36px;height:36px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur_equipe};">'
+            )
+        else:
+            initiales = "".join([p[0] for p in nom.split(".") if p])[:2].upper() if nom else "?"
+            avatar = (
+                f'<div style="width:36px;height:36px;border-radius:50%;background:{couleur_equipe};color:white;'
+                f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initiales}</div>'
+            )
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #E2E8F0;">
+            {avatar}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>
+                <div style="font-size:11px;color:#64748B;">{position} · {label}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-weight:800;color:{couleur_equipe};font-family:'Space Mono',monospace;font-size:14px;">{yards} yds</div>
+                <div style="font-size:11px;color:#64748B;">EPA {epa:.3f}</div>
+            </div>
+        </div>
+        """
+
+    if not rows_html:
+        rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=190)
+
+def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
+    """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
+    classé la semaine d'avant (nouveau qualifié ou retour de blessure)."""
+    if df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for _, row in df.head(10).iterrows():
+        team = row["team"]
+        couleur = colors.get(team, "#374151")
+        logo = logos.get(team, "")
+        rang = int(row["rank"])
+        valeur = row[value_col]
+        evolution = row.get("evolution")
+
+        if evolution != evolution:
+            badge = '<span style="color:#94A3B8;font-size:11px;font-weight:700;">NEW</span>'
+        elif evolution > 0:
+            badge = f'<span style="color:#16A34A;font-size:12px;font-weight:700;">▲ {int(evolution)}</span>'
+        elif evolution < 0:
+            badge = f'<span style="color:#DC2626;font-size:12px;font-weight:700;">▼ {int(abs(evolution))}</span>'
+        else:
+            badge = '<span style="color:#94A3B8;font-size:12px;">–</span>'
+
+        nom_affiche = f"{row['player']} · {team}" if is_player else team
+
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:20px;font-weight:800;color:{couleur};font-size:14px;">{rang}</div>
+            <img src="{logo}" height="20">
+            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>
+            <div style="width:44px;text-align:center;">{badge}</div>
+            <div style="width:60px;text-align:right;font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:13px;">{valeur:.{decimals}f}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
