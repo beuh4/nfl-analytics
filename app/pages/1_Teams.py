@@ -8,6 +8,7 @@ from queries import (
     get_team_epa_offense_defense, get_team_epa_by_week, get_all_teams_records, get_team_schedule,
     get_team_qb_leaders, get_team_rb_leaders, get_team_wr_leaders, get_team_defensive_summary,
     get_team_qb_leaders_yards, get_team_rb_leaders_yards, get_team_wr_leaders_yards,
+    get_all_teams_defensive_summary, get_team_rank_label,
     style_dataframe, render_table, render_podium, couleur_texte_contraste,
 )
 import plotly.graph_objects as go
