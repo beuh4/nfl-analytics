@@ -129,6 +129,6 @@ st.divider()
 with st.container(border=True):
     st.subheader("Un avis à partager ?")
     st.write("Ce projet est en phase de test. Tes retours m'aident à savoir quoi améliorer en priorité.")
-    st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/TON_LIEN_ICI/viewform", icon="📝")
+    st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/1FAIpQLSdEDhXjqpZjaKdjrIXozICa3qRP9qvOj0pNRtt5L8GMemIPiw/viewform", icon="📝")
 
 
