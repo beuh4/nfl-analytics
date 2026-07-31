@@ -31,6 +31,7 @@ Convention de nommage :
 
 import duckdb
 import streamlit as st
+import pandas as pd
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
@@ -1730,25 +1731,30 @@ TRADUCTIONS_COLONNES = {
 def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
                      show_team_logos=True, player_col=None):
     """Applique couleur de ligne (par équipe), contraste de texte, arrondi
-    des décimales, logo d'équipe, traduction des colonnes, et style des en-têtes.
+    des décimales, logo d'équipe, traduction des colonnes et style des en-têtes.
 
-    couleur_unique : à utiliser quand le tableau ne concerne qu'une seule
-    équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
-    player_col : nom de la colonne joueur, si une colonne "photo_url" est
-    présente dans df, pour combiner photo + nom dans la même cellule.
+    couleur_unique : couleur unique pour tous les fonds de ligne.
+    show_team_logos : affiche le logo devant l'abréviation de l'équipe.
+    player_col : nom de la colonne joueur. Si une colonne photo_url est présente,
+                 affiche la photo devant le nom.
     """
+
     df = df.reset_index(drop=True).copy()
 
+    # Détermination des couleurs de fond des lignes
     if couleur_unique is not None:
         fonds = [couleur_unique] * len(df)
         affichage = df.copy()
+
     elif "team_color" in df.columns:
         fonds = df["team_color"].tolist()
         affichage = df.drop(columns=["team_color"])
+
     elif team_col in df.columns:
         colors = get_team_colors()
         fonds = [colors.get(t, "#1f77b4") for t in df[team_col]]
         affichage = df.copy()
+
     else:
         fonds = ["#f0f0f0"] * len(df)
         affichage = df.copy()
@@ -1759,8 +1765,7 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         i = row.name
         return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
 
-    numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
-
+    # Logos des équipes
     if show_team_logos and team_col in affichage.columns:
         logos = get_team_logos()
 
@@ -1769,8 +1774,8 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
             if url:
                 return (
                     f'<span style="white-space:nowrap;">'
-                    f'<span style="display:inline-block;background:white;border-radius:50%;'
-                    f'padding:2px;margin-right:6px;line-height:0;">'
+                    f'<span style="display:inline-block;background:white;'
+                    f'border-radius:50%;padding:2px;margin-right:6px;line-height:0;">'
                     f'<img src="{url}" height="18" style="display:block;">'
                     f'</span>{abbr}'
                     f'</span>'
@@ -1779,40 +1784,86 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
         affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
 
+    # Photos des joueurs
     if player_col and player_col in affichage.columns and "photo_url" in affichage.columns:
+
         def _cell_avec_photo(row):
             url = row["photo_url"]
             nom = row[player_col]
+
             if isinstance(url, str) and url:
                 return (
                     f'<span style="white-space:nowrap;">'
-                    f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
-                    f'</span>'
+                    f'<img src="{url}" height="28" '
+                    f'style="vertical-align:middle;margin-right:6px;border-radius:50%;">'
+                    f'{nom}</span>'
                 )
+
             return nom
 
         affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
         affichage = affichage.drop(columns=["photo_url"])
 
+    # Traduction des noms de colonnes
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
-    format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
 
+    # Colonnes à afficher comme des entiers
+    integer_cols = {
+        "drive",
+        "qtr",
+        "down",
+        "ydstogo",
+        "yardline",
+        "yardline_100",
+        "play_id",
+    }
+
+    # Création du dictionnaire de formatage
+    format_dict = {}
+
+    for col in df.columns:
+
+        nom_affiche = TRADUCTIONS_COLONNES.get(col, col)
+
+        if nom_affiche not in affichage.columns:
+            continue
+
+        if col in integer_cols:
+
+            format_dict[nom_affiche] = (
+                lambda x: "" if pd.isna(x) else f"{int(x)}"
+            )
+
+        elif pd.api.types.is_float_dtype(df[col]):
+
+            format_dict[nom_affiche] = f"{{:.{decimals}f}}"
+
+    # Style des tableaux
     header_styles = [
-        {"selector": "th", "props": [
-            ("background-color", "#111827"),
-            ("color", "white"),
-            ("font-weight", "600"),
-            ("text-align", "left"),
-            ("padding", "10px 14px"),
-            ("border-bottom", "2px solid #374151"),
-        ]},
-        {"selector": "td", "props": [
-            ("padding", "8px 14px"),
-        ]},
-        {"selector": "table", "props": [
-            ("border-collapse", "collapse"),
-            ("width", "100%"),
-        ]},
+        {
+            "selector": "th",
+            "props": [
+                ("background-color", "#111827"),
+                ("color", "white"),
+                ("font-weight", "600"),
+                ("text-align", "left"),
+                ("padding", "10px 14px"),
+                ("border-bottom", "2px solid #374151"),
+            ],
+        },
+        {
+            "selector": "td",
+            "props": [
+                ("padding", "8px 14px"),
+            ],
+        },
+        {
+            "selector": "table",
+            "props": [
+                ("border-collapse", "collapse"),
+                ("width", "100%"),
+            ],
+        },
     ]
 
     return (
@@ -1822,7 +1873,6 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .set_table_styles(header_styles)
         .hide(axis="index")
     )
-
 # st.dataframe() ignore le style des en-têtes (set_table_styles) d'un Styler —
 # il ne respecte que les couleurs cellule par cellule. D'où le rendu HTML brut.
 # Contrepartie assumée : pas de tri interactif au clic sur une colonne.
