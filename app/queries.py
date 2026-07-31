@@ -301,6 +301,44 @@ def get_team_defensive_summary(team: str, season: int):
     con.close()
     return df
 
+def get_all_teams_defensive_summary(season: int):
+    """Résumé défensif de toutes les équipes pour une saison — base du
+    classement affiché à côté de chaque KPI sur la page Teams."""
+    con = get_connection()
+    query = """
+        SELECT
+            defteam AS team,
+            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
+            COUNT(*) FILTER (WHERE fumble_lost = 1) AS fumbles_forces,
+            SUM(CAST(sack AS DOUBLE)) AS sacks,
+            ROUND(
+                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
+                / NULLIF(SUM(CASE WHEN pass = 1 THEN 1 ELSE 0 END), 0),
+                3
+            ) AS taux_pression
+        FROM plays
+        WHERE season = ? AND defteam IS NOT NULL
+        GROUP BY defteam
+    """
+    df = con.execute(query, [season]).fetchdf()
+    con.close()
+    return df
+
+
+def get_team_rank_label(df_all_teams, team_abbr: str, metric_col: str) -> str | None:
+    """'#3 / 32' pour un KPI défensif donné, classé du plus fort au plus
+    faible (plus d'INT/sacks/pression = meilleure défense). None si
+    l'équipe est absente du classement."""
+    if df_all_teams.empty or team_abbr not in df_all_teams["team"].values:
+        return None
+    df_sorted = df_all_teams.sort_values(metric_col, ascending=False).reset_index(drop=True)
+    idx = df_sorted[df_sorted["team"] == team_abbr].index
+    if len(idx) == 0:
+        return None
+    rang = idx[0] + 1
+    total = len(df_sorted)
+    return f"#{rang} / {total}"
+
 def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
     con = get_connection()
     query = """

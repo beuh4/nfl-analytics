@@ -170,11 +170,26 @@ else:
 # ─── Résumé défensif ───
 st.subheader("Résumé défensif")
 def_summary = get_team_defensive_summary(team_abbr, season)
+classement_def = get_all_teams_defensive_summary(season)
+
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Interceptions", int(def_summary["interceptions"].iloc[0]))
-col2.metric("Fumbles forcés", int(def_summary["fumbles_forces"].iloc[0]))
-col3.metric("Sacks", f"{def_summary['sacks'].iloc[0]:.0f}")
-col4.metric("Taux de pression", f"{def_summary['taux_pression'].iloc[0]:.1%}" if def_summary['taux_pression'].iloc[0] is not None else "—")
+col1.metric(
+    "Interceptions", int(def_summary["interceptions"].iloc[0]),
+    get_team_rank_label(classement_def, team_abbr, "interceptions"),
+)
+col2.metric(
+    "Fumbles forcés", int(def_summary["fumbles_forces"].iloc[0]),
+    get_team_rank_label(classement_def, team_abbr, "fumbles_forces"),
+)
+col3.metric(
+    "Sacks", f"{def_summary['sacks'].iloc[0]:.0f}",
+    get_team_rank_label(classement_def, team_abbr, "sacks"),
+)
+col4.metric(
+    "Taux de pression",
+    f"{def_summary['taux_pression'].iloc[0]:.1%}" if def_summary['taux_pression'].iloc[0] is not None else "—",
+    get_team_rank_label(classement_def, team_abbr, "taux_pression"),
+)
 
 st.divider()
 
