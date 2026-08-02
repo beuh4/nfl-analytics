@@ -209,7 +209,7 @@ st.divider()
 st.subheader("Résumé des drives")
 drives = get_game_drives(game_id)
 if not drives.empty:
-    render_table(style_dataframe(drives, team_col="team"))
+    render_table(style_dataframe(drives, team_col="team", integer_cols=["drive"]))
 else:
     st.info("Données de drives indisponibles pour ce match.")
 
@@ -223,6 +223,6 @@ filtre_quart = None if quart_choisi == "Tous" else quart_choisi
 
 pbp = get_game_play_by_play(game_id, quarter=filtre_quart)
 if not pbp.empty:
-    render_table(style_dataframe(pbp, team_col="posteam"))
+    render_table(style_dataframe(pbp, team_col="posteam", integer_cols=["qtr", "down", "ydstogo", "yardline_100"]))
 else:
     st.info("Play-by-play indisponible pour ce match.")

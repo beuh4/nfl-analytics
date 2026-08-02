@@ -30,6 +30,7 @@ Convention de nommage :
 """
 
 import duckdb
+import pandas as pd
 import streamlit as st
 from pathlib import Path
 
@@ -472,6 +473,7 @@ TRADUCTIONS_COLONNES = {
     "down": "Down",
     "ydstogo": "À Franchir",
     "yardline_100": "Position",
+    "drive": "Drive",
     "desc": "Description",
     "resultat": "Résultat",
     "depart": "Départ",
@@ -1701,53 +1703,9 @@ def get_home_recent_games(season: int, limit: int = 7):
 
 # Traduction des noms de colonnes techniques vers un affichage lisible en
 # français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
-TRADUCTIONS_COLONNES = {
-    "team": "Équipe",
-    "team_name": "Nom",
-    "epa_offense": "EPA Offense",
-    "epa_defense": "EPA Défense",
-    "epa_allowed": "EPA Concédé",
-    "epa_per_play": "EPA/Play",
-    "plays_offense": "Jeux Off.",
-    "plays_defense": "Jeux Déf.",
-    "week": "Semaine",
-    "season": "Saison",
-    "player": "Joueur",
-    "dropbacks": "Dropbacks",
-    "carries": "Courses",
-    "targets": "Cibles",
-    "plays": "Plays",
-    "yards": "Yards",
-    "moyenne_saison": "Moyenne Saison",
-    "cette_semaine": "Cette Semaine",
-    "ecart": "Écart",
-    "explosive_plays": "Jeux Explosifs",
-    "play_type": "Type de Jeu",
-    "yards_gained": "Yards",
-    "epa": "EPA",
-    "takeaways": "Prises",
-    "giveaways": "Pertes",
-    "differentiel": "Différentiel",
-    "pressures": "Pressions",
-    "pass_plays": "Plays Passe",
-    "taux_pression": "Taux Pression",
-    "qtr": "Quart-temps",
-    "down": "Down",
-    "ydstogo": "À Franchir",
-    "yardline_100": "Position",
-    "desc": "Description",
-    "resultat": "Résultat",
-    "depart": "Départ",
-    "possession": "Possession",
-    "score_marque": "Score Marqué",
-    "points_marques": "Points Marqués",
-    "score_domicile": "Score Domicile",
-    "score_exterieur": "Score Extérieur",
-}
-
 
 def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
-                     show_team_logos=True, player_col=None):
+                     show_team_logos=True, player_col=None, integer_cols=None):
     """Applique couleur de ligne (par équipe), contraste de texte, arrondi
     des décimales, logo d'équipe, traduction des colonnes, et style des en-têtes.
 
@@ -1755,6 +1713,11 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
     équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
     player_col : nom de la colonne joueur, si une colonne "photo_url" est
     présente dans df, pour combiner photo + nom dans la même cellule.
+    integer_cols : colonnes techniquement stockées en float (à cause de
+    valeurs NaN ailleurs dans la table source, ex. down/qtr/drive absents
+    sur les kickoffs) mais qui représentent des entiers — formatées sans
+    décimale, avec un tiret "—" à la place de NaN plutôt que le texte
+    "nan" brut.
     """
     df = df.reset_index(drop=True).copy()
 
@@ -1778,7 +1741,9 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         i = row.name
         return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
 
+    integer_cols = integer_cols or []
     numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c not in integer_cols]
 
     if show_team_logos and team_col in affichage.columns:
         logos = get_team_logos()
@@ -1815,6 +1780,14 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
     format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
+
+    def _format_entier(valeur):
+        return "—" if pd.isna(valeur) else f"{int(valeur)}"
+
+    for col in integer_cols:
+        renamed = TRADUCTIONS_COLONNES.get(col, col)
+        if renamed in affichage.columns:
+            format_dict[renamed] = _format_entier
 
     header_styles = [
         {"selector": "th", "props": [
@@ -2254,4 +2227,3 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
     </body></html>
     """
     st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
-
