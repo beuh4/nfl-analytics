@@ -1,7 +1,16 @@
 import nfl_data_py as nfl
+import sys
 from pathlib import Path
 
-SEASONS = list(range(2015, 2026))  # 2015 à 2026  
+# BUG CORRIGÉ LORS DE L'AUDIT : ce fichier utilisait `range(2015, 2026)`,
+# qui exclut 2026 (comportement standard de range en Python) — la saison
+# en cours n'était donc jamais téléchargée par ce script, contrairement à
+# fetch_rosters.py qui, lui, allait bien jusqu'à 2026. Utiliser les
+# constantes partagées évite que ce type de désynchronisation se reproduise.
+sys.path.append(str(Path(__file__).resolve().parent.parent / "app"))
+from constants import FIRST_SEASON, CURRENT_SEASON
+
+SEASONS = list(range(FIRST_SEASON, CURRENT_SEASON + 1))
 
 COLONNES_PLAYS = [
     "play_id", "game_id", "season", "week", "season_type",
@@ -73,5 +82,11 @@ def fetch_season(season: int) -> None:
 
 
 if __name__ == "__main__":
+    # Une saison qui échoue (ex. 2026 pas encore commencée, réponse vide
+    # ou instable côté source) ne doit pas empêcher les autres saisons
+    # déjà stables d'être retéléchargées.
     for season in SEASONS:
-        fetch_season(season)
+        try:
+            fetch_season(season)
+        except Exception as e:
+            print(f"  Échec pour {season} : {e}")

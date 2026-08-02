@@ -1,5 +1,9 @@
 import nfl_data_py as nfl
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent / "app"))
+from constants import FIRST_SEASON, CURRENT_SEASON
 
 OUTPUT_DIR = Path("data/static")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -25,7 +29,9 @@ COLONNES_TEAMS = [
     "team_color", "team_logo_espn",
 ]
 
-SEASONS = list(range(2015, 2026))  # à ajuster selon l'historique retenu
+# BUG CORRIGÉ LORS DE L'AUDIT : `range(2015, 2026)` exclut 2026 — la table
+# `games` (calendrier, scores) n'incluait donc jamais la saison en cours.
+SEASONS = list(range(FIRST_SEASON, CURRENT_SEASON + 1))
 
 
 def _select(df, colonnes, label):

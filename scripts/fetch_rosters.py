@@ -1,11 +1,18 @@
 import nfl_data_py as nfl
 import pandas as pd
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent / "app"))
+from constants import FIRST_SEASON, CURRENT_SEASON
 
 OUTPUT_DIR = Path("data/static")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-SEASONS = list(range(2015, 2027))
+# Ce script était déjà correct (allait bien jusqu'à 2026), contrairement à
+# fetch_plays.py et fetch_static.py — aligné ici sur la même constante
+# partagée pour que les quatre scripts ne puissent plus diverger.
+SEASONS = list(range(FIRST_SEASON, CURRENT_SEASON + 1))
 
 COLONNES_ROSTERS = [
     "player_id", "player_name", "season", "team", "position",

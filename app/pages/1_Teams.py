@@ -8,9 +8,9 @@ from queries import (
     get_team_epa_offense_defense, get_team_epa_by_week, get_all_teams_records, get_team_schedule,
     get_team_qb_leaders, get_team_rb_leaders, get_team_wr_leaders, get_team_defensive_summary,
     get_team_qb_leaders_yards, get_team_rb_leaders_yards, get_team_wr_leaders_yards,
-    get_all_teams_defensive_summary, get_team_rank_label,
     style_dataframe, render_table, render_podium, couleur_texte_contraste,
 )
+from constants import DEFAULT_TEAM
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Teams", layout="wide")
@@ -33,8 +33,10 @@ abbr_to_name = {v: k for k, v in team_name_to_abbr.items()}
 # widget Saison, qui a son propre key — plus de couplage accidentel entre
 # les deux sélections.
 if "select_team" not in st.session_state:
-    initial_abbr = st.query_params.get("team", teams_df["team_abbr"].iloc[0])
+    initial_abbr = st.query_params.get("team", DEFAULT_TEAM)
     if initial_abbr not in abbr_to_name:
+        # Repli ultime si DEFAULT_TEAM n'est pas dans la liste des équipes
+        # actives (ne devrait pas arriver, mais évite un crash silencieux).
         initial_abbr = teams_df["team_abbr"].iloc[0]
     st.session_state["select_team"] = abbr_to_name[initial_abbr]
 
@@ -92,18 +94,20 @@ with col_logo:
     </div>
     """, unsafe_allow_html=True)
 
+nb_equipes_classees = len(df_epa_ligue)
+
 with col_epa_off:
     st.metric(
         "EPA Offense",
         f"{equipe_row['epa_offense'].iloc[0]:.3f}" if not equipe_row.empty else "—",
-        f"#{rang_offense} / 32 en ligue" if rang_offense else None,
+        f"#{rang_offense} / {nb_equipes_classees} en ligue" if rang_offense else None,
     )
 
 with col_epa_def:
     st.metric(
         "EPA Défense (concédé)",
         f"{equipe_row['epa_defense'].iloc[0]:.3f}" if not equipe_row.empty else "—",
-        f"#{rang_defense} / 32 en ligue" if rang_defense else None,
+        f"#{rang_defense} / {nb_equipes_classees} en ligue" if rang_defense else None,
     )
 
 st.divider()
@@ -171,26 +175,11 @@ else:
 # ─── Résumé défensif ───
 st.subheader("Résumé défensif")
 def_summary = get_team_defensive_summary(team_abbr, season)
-classement_def = get_all_teams_defensive_summary(season)
-
 col1, col2, col3, col4 = st.columns(4)
-col1.metric(
-    "Interceptions", int(def_summary["interceptions"].iloc[0]),
-    get_team_rank_label(classement_def, team_abbr, "interceptions"),
-)
-col2.metric(
-    "Fumbles forcés", int(def_summary["fumbles_forces"].iloc[0]),
-    get_team_rank_label(classement_def, team_abbr, "fumbles_forces"),
-)
-col3.metric(
-    "Sacks", f"{def_summary['sacks'].iloc[0]:.0f}",
-    get_team_rank_label(classement_def, team_abbr, "sacks"),
-)
-col4.metric(
-    "Taux de pression",
-    f"{def_summary['taux_pression'].iloc[0]:.1%}" if def_summary['taux_pression'].iloc[0] is not None else "—",
-    get_team_rank_label(classement_def, team_abbr, "taux_pression"),
-)
+col1.metric("Interceptions", int(def_summary["interceptions"].iloc[0]))
+col2.metric("Fumbles forcés", int(def_summary["fumbles_forces"].iloc[0]))
+col3.metric("Sacks", f"{def_summary['sacks'].iloc[0]:.0f}")
+col4.metric("Taux de pression", f"{def_summary['taux_pression'].iloc[0]:.1%}" if def_summary['taux_pression'].iloc[0] is not None else "—")
 
 st.divider()
 

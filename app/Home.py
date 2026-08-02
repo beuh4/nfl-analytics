@@ -7,39 +7,15 @@ from queries import (
     get_home_stats, get_home_current_season, get_home_top_teams, get_home_top_players,
     get_home_recent_games, render_top_teams_list, render_top_players_list, render_recent_games_list,
 )
+from styles import HOME_CSS
 
 st.set_page_config(page_title="NFL Analytics", layout="wide", page_icon="🏈")
 
 stats = get_home_stats()
 
+st.markdown(HOME_CSS, unsafe_allow_html=True)
+
 st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
-
-html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
-
-.hero-banner {{
-    position: relative; overflow: hidden;
-    background: linear-gradient(180deg, #0F172A 0%, #111C33 100%);
-    background-image:
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 64px),
-        linear-gradient(180deg, #0F172A 0%, #111C33 100%);
-    border-radius: 16px; padding: 18px 32px 0; margin-bottom: 0; text-align: center;
-}}
-.hero-eyebrow {{ font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #EA580C; text-transform: uppercase; margin-bottom: 4px; }}
-.hero-title {{ font-weight: 800; font-size: clamp(1.3rem, 2.6vw, 1.8rem); color: #CBD5E1 !important; margin: 0 0 3px; letter-spacing: -0.02em; }}
-.hero-tagline {{ font-size: 13px; color: #94A3B8; margin: 0 0 12px; }}
-
-.stat-strip {{
-    display: flex; justify-content: center; gap: 36px;
-    background: #111C33; padding: 10px 32px; border-radius: 0 0 16px 16px;
-    margin-bottom: 24px; flex-wrap: wrap;
-}}
-.stat-item {{ text-align: center; }}
-.stat-value {{ font-family: 'Space Mono', monospace; font-size: 17px; font-weight: 700; color: #EA580C; }}
-.stat-label {{ font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }}
-</style>
-
 <div class="hero-banner">
     <div class="hero-eyebrow">Play-by-play · {stats['saison_min']}–{stats['saison_max']}</div>
     <h1 class="hero-title">NFL Analytics FR</h1>
@@ -52,6 +28,17 @@ html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
     <div class="stat-item"><div class="stat-value">{stats['nb_saisons']}</div><div class="stat-label">Seasons</div></div>
 </div>
 """, unsafe_allow_html=True)
+
+
+def display_navigation_card(icon: str, title: str, description: str, page_path: str) -> None:
+    """Affiche une carte de navigation standardisée (icône + titre + description
+    + lien). Utilisée 7 fois sur cette page — modifier le design ici suffit
+    à le changer partout, plutôt que de retoucher chaque bloc individuellement."""
+    with st.container(border=True):
+        st.subheader(f"{icon} {title}")
+        st.write(description)
+        st.page_link(page_path, label="Ouvrir", icon="➡️")
+
 
 # ─── Aperçu de la saison ───
 st.subheader("Aperçu de la saison")
@@ -86,42 +73,49 @@ st.divider()
 # ─── Navigation principale ───
 col1, col2, col3 = st.columns(3)
 with col1:
-    with st.container(border=True):
-        st.subheader("🏈 Teams")
-        st.write("Fiche complète par équipe : bilan, EPA, classement ligue, leaders, calendrier.")
-        st.page_link("pages/1_Teams.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "🏈", "Teams",
+        "Fiche complète par équipe : bilan, EPA, classement ligue, leaders, calendrier.",
+        "pages/1_Teams.py",
+    )
 with col2:
-    with st.container(border=True):
-        st.subheader("👤 Players")
-        st.write("Fiche joueur : bio, statistiques passing/rushing/receiving, EPA, pression, tendance.")
-        st.page_link("pages/2_Players.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "👤", "Players",
+        "Fiche joueur : bio, statistiques passing/rushing/receiving, EPA, pression, tendance.",
+        "pages/2_Players.py",
+    )
 with col3:
-    with st.container(border=True):
-        st.subheader("🏟️ Games")
-        st.write("Détail d'un match : score, drives, win probability, play-by-play.")
-        st.page_link("pages/3_Games.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "🏟️", "Games",
+        "Détail d'un match : score, drives, win probability, play-by-play.",
+        "pages/3_Games.py",
+    )
 
 col4, col5, col6 = st.columns(3)
 with col4:
-    with st.container(border=True):
-        st.subheader("🏆 Rankings")
-        st.write("Meilleurs joueurs et équipes, semaine par semaine ou saison entière.")
-        st.page_link("pages/4_Rankings.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "🏆", "Rankings",
+        "Meilleurs joueurs et équipes, semaine par semaine ou saison entière.",
+        "pages/4_Rankings.py",
+    )
 with col5:
-    with st.container(border=True):
-        st.subheader("📊 Analytics")
-        st.write("EPA offensif vs défensif, toutes les équipes de la ligue en un coup d'œil.")
-        st.page_link("pages/5_Analytics.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "📊", "Analytics",
+        "EPA offensif vs défensif, toutes les équipes de la ligue en un coup d'œil.",
+        "pages/5_Analytics.py",
+    )
 with col6:
-    with st.container(border=True):
-        st.subheader("⚖️ Compare")
-        st.write("Compare plusieurs équipes sur plusieurs années, offense ou défense.")
-        st.page_link("pages/6_Compare.py", label="Ouvrir", icon="➡️")
+    display_navigation_card(
+        "⚖️", "Compare",
+        "Compare plusieurs équipes sur plusieurs années, offense ou défense.",
+        "pages/6_Compare.py",
+    )
 
-with st.container(border=True):
-    st.subheader("ℹ️ About")
-    st.write("Source des données, méthodologie, et formulaire de retour.")
-    st.page_link("pages/7_About.py", label="Ouvrir", icon="➡️")
+display_navigation_card(
+    "ℹ️", "About",
+    "Source des données, méthodologie, et formulaire de retour.",
+    "pages/7_About.py",
+)
 
 st.divider()
 
@@ -129,6 +123,4 @@ st.divider()
 with st.container(border=True):
     st.subheader("Un avis à partager ?")
     st.write("Ce projet est en phase de test. Tes retours m'aident à savoir quoi améliorer en priorité.")
-    st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/1FAIpQLSdEDhXjqpZjaKdjrIXozICa3qRP9qvOj0pNRtt5L8GMemIPiw/viewform", icon="📝")
-
-
+    st.link_button("Donner mon avis", "https://docs.google.com/forms/d/e/TON_LIEN_ICI/viewform", icon="📝")

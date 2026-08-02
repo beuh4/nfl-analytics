@@ -31,7 +31,6 @@ Convention de nommage :
 
 import duckdb
 import streamlit as st
-import pandas as pd
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
@@ -41,7 +40,9 @@ DB_PATH = Path(__file__).resolve().parent.parent / "database" / "nfl.duckdb"
 # CONNEXION
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_resource
 def get_connection():
+    """Connexion DuckDB en lecture seule, réutilisée pour toute la session (voir cache_resource)."""
     # read_only=True évite un conflit de verrou si un job d'ingestion
     # écrit sur le fichier pendant qu'un utilisateur consulte l'app.
     return duckdb.connect(str(DB_PATH), read_only=True)
@@ -51,18 +52,20 @@ def get_connection():
 # UTILITAIRES GÉNÉRIQUES
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_available_seasons():
+    """Liste des saisons présentes en base, pour peupler les sélecteurs."""
     con = get_connection()
     df = con.execute("SELECT DISTINCT season FROM plays ORDER BY season").fetchdf()
-    con.close()
     return df["season"].tolist()
 
+@st.cache_data(ttl=3600)
 def get_weeks_for_season(season: int):
+    """Liste des semaines jouées pour une saison donnée."""
     con = get_connection()
     df = con.execute(
         "SELECT DISTINCT week FROM plays WHERE season = ? ORDER BY week", [season]
     ).fetchdf()
-    con.close()
     return df["week"].tolist()
 
 
@@ -70,16 +73,18 @@ def get_weeks_for_season(season: int):
 # Requêtes hebdomadaires (Weekly Recap)
 # ─────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_team_colors():
+    """Couleur officielle par équipe (abréviation -> hex), pour l'identité visuelle des graphiques et tableaux."""
     con = get_connection()
     df = con.execute("SELECT team_abbr, team_color FROM teams").fetchdf()
-    con.close()
     return dict(zip(df["team_abbr"], df["team_color"]))
 
+@st.cache_data(ttl=3600)
 def get_team_logos():
+    """URL du logo ESPN par équipe (abréviation -> URL)."""
     con = get_connection()
     df = con.execute("SELECT team_abbr, team_logo_espn FROM teams").fetchdf()
-    con.close()
     return dict(zip(df["team_abbr"], df["team_logo_espn"]))
 
 def couleur_texte_contraste(hex_color: str) -> str:
@@ -116,6 +121,7 @@ def convertir_taille_poids(height_val, weight_val):
     return metres, poids_kg
 
 def traduire_surface(valeur: str) -> str:
+    """Traduit le type de surface du terrain (donnée source en anglais) en français lisible."""
     if not isinstance(valeur, str):
         return "—"
     return TRADUCTION_SURFACE.get(valeur.lower(), valeur.capitalize())
@@ -125,6 +131,7 @@ def traduire_surface(valeur: str) -> str:
 # TEAMS — VUE SAISON
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_all_teams():
     """Seules les 32 équipes actives sont retenues : celles ayant joué lors
     de la saison la plus récente en base. Filtre les franchises historiques
@@ -142,9 +149,9 @@ def get_all_teams():
         ORDER BY t.team_name
     """
     df = con.execute(query).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_all_teams_records(season: int):
     """Bilan V/D/N de toutes les équipes pour une saison, calculé depuis
     la table games (un match compte pour les deux équipes via UNION ALL)."""
@@ -166,11 +173,11 @@ def get_all_teams_records(season: int):
         GROUP BY team
     """
     df = con.execute(query, [season, season]).fetchdf()
-    con.close()
     total = df["wins"] + df["losses"] + df["ties"]
     df["win_pct"] = ((df["wins"] + 0.5 * df["ties"]) / total.replace(0, 1)).fillna(0)
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_epa_offense_defense(season: int):
     """EPA offensif et défensif par équipe pour une saison donnée."""
     con = get_connection()
@@ -201,9 +208,9 @@ def get_team_epa_offense_defense(season: int):
         ORDER BY o.epa_offense DESC
     """
     df = con.execute(query, [season, season]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_epa_by_week(team: str, season: int):
     """EPA offensif/défensif semaine par semaine pour une équipe et une saison."""
     con = get_connection()
@@ -220,9 +227,9 @@ def get_team_epa_by_week(team: str, season: int):
         ORDER BY week
     """
     df = con.execute(query, [team, team, season, team, team]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_epa_by_season_multi(teams: list[str]):
     """EPA offensif/défensif saison par saison, pour plusieurs équipes en parallèle."""
     con = get_connection()
@@ -246,10 +253,11 @@ def get_team_epa_by_season_multi(teams: list[str]):
         ORDER BY o.season, o.team
     """
     df = con.execute(query, teams + teams).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_seasons_for_team(team: str):
+    """Saisons où une équipe donnée a joué (utile pour une franchise ayant changé de nom/ville)."""
     con = get_connection()
     query = """
         SELECT DISTINCT season FROM plays
@@ -257,9 +265,9 @@ def get_seasons_for_team(team: str):
         ORDER BY season
     """
     df = con.execute(query, [team, team]).fetchdf()
-    con.close()
     return df["season"].tolist()
 
+@st.cache_data(ttl=3600)
 def get_team_schedule(team: str, season: int):
     """Calendrier complet d'une équipe pour une saison, normalisé du point
     de vue de cette équipe (team_score/opp_score plutôt que home/away).
@@ -277,10 +285,10 @@ def get_team_schedule(team: str, season: int):
         ORDER BY week
     """
     df = con.execute(query, [team, team, team, team, season, team, team]).fetchdf()
-    con.close()
     df["joue"] = df["team_score"].notna() & df["opp_score"].notna()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_defensive_summary(team: str, season: int):
     """Résumé défensif au niveau équipe. Pas de détail par joueur :
     sack_player_id et les colonnes de tackle ne sont pas dans le schéma."""
@@ -299,48 +307,11 @@ def get_team_defensive_summary(team: str, season: int):
         WHERE season = ? AND defteam = ?
     """
     df = con.execute(query, [season, team]).fetchdf()
-    con.close()
     return df
 
-def get_all_teams_defensive_summary(season: int):
-    """Résumé défensif de toutes les équipes pour une saison — base du
-    classement affiché à côté de chaque KPI sur la page Teams."""
-    con = get_connection()
-    query = """
-        SELECT
-            defteam AS team,
-            COUNT(*) FILTER (WHERE interception = 1) AS interceptions,
-            COUNT(*) FILTER (WHERE fumble_lost = 1) AS fumbles_forces,
-            SUM(CAST(sack AS DOUBLE)) AS sacks,
-            ROUND(
-                SUM(COALESCE(CAST(was_pressure AS DOUBLE), 0)) * 1.0
-                / NULLIF(SUM(CASE WHEN pass = 1 THEN 1 ELSE 0 END), 0),
-                3
-            ) AS taux_pression
-        FROM plays
-        WHERE season = ? AND defteam IS NOT NULL
-        GROUP BY defteam
-    """
-    df = con.execute(query, [season]).fetchdf()
-    con.close()
-    return df
-
-
-def get_team_rank_label(df_all_teams, team_abbr: str, metric_col: str) -> str | None:
-    """'#3 / 32' pour un KPI défensif donné, classé du plus fort au plus
-    faible (plus d'INT/sacks/pression = meilleure défense). None si
-    l'équipe est absente du classement."""
-    if df_all_teams.empty or team_abbr not in df_all_teams["team"].values:
-        return None
-    df_sorted = df_all_teams.sort_values(metric_col, ascending=False).reset_index(drop=True)
-    idx = df_sorted[df_sorted["team"] == team_abbr].index
-    if len(idx) == 0:
-        return None
-    rang = idx[0] + 1
-    total = len(df_sorted)
-    return f"#{rang} / {total}"
-
+@st.cache_data(ttl=3600)
 def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
+    """Top 3 QB d'une équipe sur une saison, classés par EPA/dropback."""
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -355,7 +326,6 @@ def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
 TRADUCTION_SURFACE = {
@@ -369,7 +339,9 @@ TRADUCTION_SURFACE = {
     "dessograss": "Pelouse hybride (Desso GrassMaster)",
 }
 
+@st.cache_data(ttl=3600)
 def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
+    """Top 3 RB d'une équipe sur une saison, classés par EPA/course."""
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -384,10 +356,11 @@ def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
+    """Top 3 receveurs d'une équipe sur une saison, classés par EPA/cible."""
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -402,10 +375,11 @@ def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_targets]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
+    """Top 3 QB d'une équipe sur une saison, classés par yards lancés (vue « stats classiques »)."""
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -420,10 +394,11 @@ def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
+    """Top 3 RB d'une équipe sur une saison, classés par yards parcourus."""
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -438,10 +413,11 @@ def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
+    """Top 3 receveurs d'une équipe sur une saison, classés par yards attrapés."""
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -456,7 +432,6 @@ def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
         LIMIT 3
     """
     df = con.execute(query, [season, team, min_targets]).fetchdf()
-    con.close()
     return df
 
 # ─────────────────────────────────────────────────────────────
@@ -512,7 +487,9 @@ TRADUCTIONS_COLONNES = {
 # TEAMS — CLASSEMENT HEBDOMADAIRE AVEC MOUVEMENT
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_team_epa_rank_week(season: int, week: int):
+    """Classement EPA offensif de toutes les équipes pour une semaine précise (base du calcul d'évolution)."""
     con = get_connection()
     query = """
         SELECT posteam AS team, AVG(epa) AS epa_offense
@@ -521,13 +498,13 @@ def get_team_epa_rank_week(season: int, week: int):
         GROUP BY posteam
     """
     df = con.execute(query, [season, week]).fetchdf()
-    con.close()
     if df.empty:
         return df
     df = df.sort_values(["epa_offense", "team"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = df.index + 1
     return df
 
+@st.cache_data(ttl=3600)
 def get_team_weekly_movement(season: int, week: int):
     """Classement EPA offensif de la semaine, avec évolution de rang vs
     la semaine précédente de la même saison."""
@@ -543,6 +520,7 @@ def get_team_weekly_movement(season: int, week: int):
     current["evolution"] = current["rank_precedent"] - current["rank"]
     return current
 
+@st.cache_data(ttl=3600)
 def get_team_epa_cumulative_through_week(season: int, week: int):
     """EPA offensif/défensif moyen depuis la semaine 1 jusqu'à la semaine
     sélectionnée incluse — pas la saison entière."""
@@ -564,7 +542,6 @@ def get_team_epa_cumulative_through_week(season: int, week: int):
         FROM offense o JOIN defense d ON o.team = d.team
     """
     df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
     return df
 
 
@@ -572,6 +549,7 @@ def get_team_epa_cumulative_through_week(season: int, week: int):
 # PLAYERS — BIO ET STATISTIQUES SAISON
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_player_search_list(season: int):
     """Liste des joueurs ayant au moins une statistique qualifiante — offensive
     (passe, course, réception) ou défensive (tacle, sack, INT, PD, FF) — sur
@@ -609,9 +587,9 @@ def get_player_search_list(season: int):
     """
     params = [season] * 13
     df = con.execute(query, params).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_bio(player_id: str, season: int):
     """Bio du joueur telle qu'au moment de la saison donnée. Si absente
     (joueur non présent au roster cette saison précise), repli sur la
@@ -634,10 +612,11 @@ def get_player_bio(player_id: str, season: int):
             LIMIT 1
         """
         df = con.execute(query_fallback, [player_id, season]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_games_played(player_id: str, season: int):
+    """Nombre de matchs joués par un joueur sur une saison (compte les game_id distincts où il apparaît)."""
     con = get_connection()
     query = """
         SELECT COUNT(DISTINCT game_id) AS matchs
@@ -646,10 +625,11 @@ def get_player_games_played(player_id: str, season: int):
           AND (passer_player_id = ? OR rusher_player_id = ? OR receiver_player_id = ?)
     """
     df = con.execute(query, [season, player_id, player_id, player_id]).fetchdf()
-    con.close()
     return int(df["matchs"].iloc[0]) if not df.empty else 0
 
+@st.cache_data(ttl=3600)
 def get_player_passing_season(player_id: str, season: int):
+    """Statistiques de passe (yards, TD, INT, EPA, CPOE, air yards) d'un joueur sur une saison entière."""
     con = get_connection()
     query = """
         SELECT
@@ -666,10 +646,11 @@ def get_player_passing_season(player_id: str, season: int):
         WHERE season = ? AND passer_player_id = ?
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_rushing_season(player_id: str, season: int):
+    """Statistiques de course (yards, TD, EPA) d'un joueur sur une saison entière."""
     con = get_connection()
     query = """
         SELECT
@@ -681,10 +662,11 @@ def get_player_rushing_season(player_id: str, season: int):
         WHERE season = ? AND rusher_player_id = ?
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_receiving_season(player_id: str, season: int):
+    """Statistiques de réception (cibles, yards, TD, EPA, air yards, YAC) d'un joueur sur une saison entière."""
     con = get_connection()
     query = """
         SELECT
@@ -699,10 +681,11 @@ def get_player_receiving_season(player_id: str, season: int):
         WHERE season = ? AND receiver_player_id = ?
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_pressure_season(player_id: str, season: int):
+    """Pression subie par un QB sur la saison : dropbacks pressés, sacks subis, taux de pression."""
     con = get_connection()
     query = """
         SELECT
@@ -718,10 +701,11 @@ def get_player_pressure_season(player_id: str, season: int):
         WHERE season = ? AND passer_player_id = ?
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_defensive_season(player_id: str, season: int):
+    """Statistiques défensives individuelles cumulées sur la saison (tacles, sacks, INT, passes défendues, fumbles forcés)."""
     con = get_connection()
     query = """
         SELECT
@@ -740,13 +724,14 @@ def get_player_defensive_season(player_id: str, season: int):
     """
     params = [player_id] * 18 + [season]
     df = con.execute(query, params).fetchdf()
-    con.close()
     if not df.empty:
         df["tacles_totaux"] = df["tacles_solo"] + df["tacles_assistes"]
         df["sacks_totaux"] = df["sacks_pleins"] + df["demi_sacks"] * 0.5
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_season_epa(player_id: str, season: int, role: str):
+    """EPA moyen d'un joueur sur la saison entière, pour un rôle donné (passing/rushing/receiving)."""
     colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
     filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
     con = get_connection()
@@ -756,10 +741,11 @@ def get_player_season_epa(player_id: str, season: int, role: str):
         WHERE season = ? AND {colonne_id} = ? AND {filtre}
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_qb_full_rankings(season: int, min_dropbacks: int = 100):
+    """Classement complet des QB qualifiés sur la saison (yards, EPA, CPOE) — sert de base à get_rank_label."""
     con = get_connection()
     query = """
         SELECT passer_player_id AS player_id,
@@ -772,10 +758,11 @@ def get_qb_full_rankings(season: int, min_dropbacks: int = 100):
         HAVING COUNT(*) >= ?
     """
     df = con.execute(query, [season, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_rb_full_rankings(season: int, min_carries: int = 50):
+    """Classement complet des RB qualifiés sur la saison (yards, EPA) — sert de base à get_rank_label."""
     con = get_connection()
     query = """
         SELECT rusher_player_id AS player_id,
@@ -787,10 +774,11 @@ def get_rb_full_rankings(season: int, min_carries: int = 50):
         HAVING COUNT(*) >= ?
     """
     df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_wr_full_rankings(season: int, min_targets: int = 30):
+    """Classement complet des receveurs qualifiés sur la saison (yards, EPA) — sert de base à get_rank_label."""
     con = get_connection()
     query = """
         SELECT receiver_player_id AS player_id,
@@ -802,9 +790,9 @@ def get_wr_full_rankings(season: int, min_targets: int = 30):
         HAVING COUNT(*) >= ?
     """
     df = con.execute(query, [season, min_targets]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_rank_label(df_rankings, player_id: str, metric_col: str):
     """Retourne '#3 / 24' si le joueur est qualifié pour ce classement,
     None sinon (échantillon trop petit ou stat non applicable)."""
@@ -823,6 +811,7 @@ def get_rank_label(df_rankings, player_id: str, metric_col: str):
 # PLAYERS — TENDANCES HEBDOMADAIRES
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_player_weekly_trend(player_id: str, season: int, role: str):
     """role : 'passing', 'rushing' ou 'receiving' — détermine la colonne
     d'identifiant et le filtre de type de jeu à utiliser."""
@@ -845,9 +834,9 @@ def get_player_weekly_trend(player_id: str, season: int, role: str):
         ORDER BY week
     """
     df = con.execute(query, [season, player_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_defensive_weekly_trend(player_id: str, season: int):
     """Volume défensif hebdomadaire (tacles + sacks + PD + FF + INT) —
     l'EPA n'est pas attribuable à un défenseur individuel dans nflverse
@@ -871,10 +860,11 @@ def get_player_defensive_weekly_trend(player_id: str, season: int):
     """
     params = [player_id] * 14 + [season]
     df = con.execute(query, params).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int = 5):
+    """Classement EPA de tous les joueurs qualifiés à un rôle donné, pour une semaine précise."""
     con = get_connection()
     colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
     nom_col = {"passing": "passer_player_name", "rushing": "rusher_player_name", "receiving": "receiver_player_name"}[role]
@@ -888,14 +878,15 @@ def get_player_epa_rank_week(season: int, week: int, role: str, min_plays: int =
         HAVING COUNT(*) >= ?
     """
     df = con.execute(query, [season, week, min_plays]).fetchdf()
-    con.close()
     if df.empty:
         return df
     df = df.sort_values(["epa_per_play", "player_id"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = df.index + 1
     return df
 
+@st.cache_data(ttl=3600)
 def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int = 5):
+    """Classement EPA hebdomadaire d'un joueur avec évolution de rang vs la semaine précédente."""
     current = get_player_epa_rank_week(season, week, role, min_plays)
     if current.empty:
         return current
@@ -908,7 +899,9 @@ def get_player_weekly_movement(season: int, week: int, role: str, min_plays: int
     current["evolution"] = current["rank_precedent"] - current["rank"]
     return current
 
+@st.cache_data(ttl=3600)
 def get_player_epa_cumulative_through_week(player_id: str, season: int, week: int, role: str):
+    """EPA moyen d'un joueur du début de saison jusqu'à une semaine donnée incluse (pas la saison complète)."""
     colonne_id = {"passing": "passer_player_id", "rushing": "rusher_player_id", "receiving": "receiver_player_id"}[role]
     filtre = {"passing": "qb_dropback = 1", "rushing": "rush = 1", "receiving": "pass = 1"}[role]
     con = get_connection()
@@ -918,7 +911,6 @@ def get_player_epa_cumulative_through_week(player_id: str, season: int, week: in
         WHERE season = ? AND week <= ? AND {colonne_id} = ? AND {filtre}
     """
     df = con.execute(query, [season, week, player_id]).fetchdf()
-    con.close()
     return df
 
 
@@ -926,7 +918,9 @@ def get_player_epa_cumulative_through_week(player_id: str, season: int, week: in
 # GAMES
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_games_for_week(season: int, week: int):
+    """Liste des matchs programmés pour une saison et une semaine données."""
     con = get_connection()
     query = """
         SELECT game_id, week, gameday, home_team, away_team, home_score, away_score
@@ -935,10 +929,11 @@ def get_games_for_week(season: int, week: int):
         ORDER BY gameday
     """
     df = con.execute(query, [season, week]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_info(game_id: str):
+    """Informations générales d'un match : score, stade, surface, météo, prolongation."""
     con = get_connection()
     query = """
         SELECT season, week, gameday, home_team, away_team, home_score, away_score,
@@ -946,9 +941,9 @@ def get_game_info(game_id: str):
         FROM games WHERE game_id = ?
     """
     df = con.execute(query, [game_id]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_win_probability(game_id: str):
     """Win probability du point de vue de l'équipe à domicile, reconstruite
     depuis wp (probabilité de l'équipe en possession) selon qui a le ballon."""
@@ -961,11 +956,12 @@ def get_game_win_probability(game_id: str):
         ORDER BY play_id
     """
     df = con.execute(query, [game_id]).fetchdf()
-    con.close()
     df["progression"] = range(1, len(df) + 1)
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_epa_cumulative(game_id: str):
+    """EPA cumulé de chaque équipe au fil du match, jeu après jeu — sert au graphique de momentum."""
     con = get_connection()
     query = """
         SELECT play_id, posteam,
@@ -975,10 +971,10 @@ def get_game_epa_cumulative(game_id: str):
         ORDER BY play_id
     """
     df = con.execute(query, [game_id]).fetchdf()
-    con.close()
     df["progression"] = df.groupby("posteam").cumcount() + 1
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_score_progression(game_id: str):
     """Écart de score du point de vue de l'équipe à domicile, reconstruit
     depuis score_differential (qui est du point de vue de l'équipe en
@@ -992,11 +988,12 @@ def get_game_score_progression(game_id: str):
         ORDER BY play_id
     """
     df = con.execute(query, [game_id]).fetchdf()
-    con.close()
     df["progression"] = range(1, len(df) + 1)
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_drives(game_id: str):
+    """Résumé des drives d'un match : résultat, position de départ, possession, score marqué."""
     con = get_connection()
     query = """
         WITH bounds AS (
@@ -1020,7 +1017,6 @@ def get_game_drives(game_id: str):
         ORDER BY b.drive
     """
     df = con.execute(query, [game_id, game_id, game_id]).fetchdf()
-    con.close()
 
     if not df.empty:
         # Points marqués sur ce drive = variation du total de points (les deux
@@ -1037,6 +1033,7 @@ def get_game_drives(game_id: str):
 
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_top_performer(game_id: str, team: str, season: int, role: str):
     """role : 'passing', 'rushing' ou 'receiving'."""
     con = get_connection()
@@ -1058,10 +1055,11 @@ def get_game_top_performer(game_id: str, team: str, season: int, role: str):
         LIMIT 1
     """
     df = con.execute(query, [season, game_id, team]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_game_play_by_play(game_id: str, quarter: int | None = None):
+    """Play-by-play textuel d'un match, avec filtre optionnel par quart-temps."""
     con = get_connection()
     if quarter:
         query = """
@@ -1079,7 +1077,6 @@ def get_game_play_by_play(game_id: str, quarter: int | None = None):
             ORDER BY play_id
         """
         df = con.execute(query, [game_id]).fetchdf()
-    con.close()
     return df
 
 
@@ -1087,7 +1084,9 @@ def get_game_play_by_play(game_id: str, quarter: int | None = None):
 # CLASSEMENTS SAISON COMPLÈTE (Rankings > onglet Saison, Home)
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
+    """Top 3 QB de la ligue sur une saison, classés par yards lancés."""
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -1102,10 +1101,11 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
         LIMIT 3
     """
     df = con.execute(query, [season, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_rb_season_yards(season: int, min_carries: int = 50):
+    """Top 3 RB de la ligue sur une saison, classés par yards parcourus."""
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -1120,10 +1120,11 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
         LIMIT 3
     """
     df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_wr_season_yards(season: int, min_targets: int = 30):
+    """Top 3 receveurs de la ligue sur une saison, classés par yards attrapés."""
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -1138,10 +1139,11 @@ def get_top_wr_season_yards(season: int, min_targets: int = 30):
         LIMIT 3
     """
     df = con.execute(query, [season, min_targets]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_teams_offense_yards_season(season: int):
+    """Top 3 équipes de la ligue sur une saison, classées par total de yards offensifs."""
     con = get_connection()
     query = """
         SELECT posteam AS team, SUM(yards_gained) AS yards, COUNT(*) AS plays
@@ -1152,7 +1154,6 @@ def get_top_teams_offense_yards_season(season: int):
         LIMIT 3
     """
     df = con.execute(query, [season]).fetchdf()
-    con.close()
     return df
 
 
@@ -1160,7 +1161,9 @@ def get_top_teams_offense_yards_season(season: int):
 # Requêtes annuelles (Annual Recap) — EPA sur la saison entière
 # ─────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
+    """Top 3 QB de la ligue sur une saison, classés par EPA/dropback."""
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -1175,10 +1178,11 @@ def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
         LIMIT 3
     """
     df = con.execute(query, [season, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_rb_season_epa(season: int, min_carries: int = 50):
+    """Top 3 RB de la ligue sur une saison, classés par EPA/course."""
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -1193,10 +1197,11 @@ def get_top_rb_season_epa(season: int, min_carries: int = 50):
         LIMIT 3
     """
     df = con.execute(query, [season, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_wr_season_epa(season: int, min_targets: int = 30):
+    """Top 3 receveurs de la ligue sur une saison, classés par EPA/cible."""
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -1211,7 +1216,6 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
         LIMIT 3
     """
     df = con.execute(query, [season, min_targets]).fetchdf()
-    con.close()
     return df
 
 
@@ -1219,7 +1223,9 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
 # CLASSEMENTS HEBDOMADAIRES (Rankings > onglet Semaine)
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
+    """Top 3 QB de la ligue sur une semaine précise, classés par EPA/dropback."""
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
@@ -1234,10 +1240,11 @@ def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_dropbacks]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_rb_week(season: int, week: int, min_carries: int = 5):
+    """Top 3 RB de la ligue sur une semaine précise, classés par EPA/course."""
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
@@ -1252,10 +1259,11 @@ def get_top_rb_week(season: int, week: int, min_carries: int = 5):
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_carries]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_top_wr_week(season: int, week: int, min_targets: int = 3):
+    """Top 3 receveurs de la ligue sur une semaine précise, classés par EPA/cible."""
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
@@ -1270,10 +1278,11 @@ def get_top_wr_week(season: int, week: int, min_targets: int = 3):
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_targets]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_best_offense_week(season: int, week: int):
+    """Les 3 attaques les plus efficaces (EPA) sur une semaine précise."""
     con = get_connection()
     query = """
         SELECT posteam AS team, ROUND(AVG(epa), 3) AS epa_offense, COUNT(*) AS plays
@@ -1284,10 +1293,11 @@ def get_best_offense_week(season: int, week: int):
         LIMIT 3
     """
     df = con.execute(query, [season, week]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_best_defense_week(season: int, week: int):
+    """Les 3 défenses ayant concédé le moins d'EPA sur une semaine précise."""
     con = get_connection()
     query = """
         SELECT defteam AS team, ROUND(AVG(epa), 3) AS epa_allowed, COUNT(*) AS plays
@@ -1298,9 +1308,9 @@ def get_best_defense_week(season: int, week: int):
         LIMIT 3
     """
     df = con.execute(query, [season, week]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_biggest_surprises_week(season: int, week: int):
     """Compare l'EPA de la semaine à la moyenne du reste de la saison,
     pour repérer les équipes qui sortent nettement du lot (en bien ou en mal)."""
@@ -1327,9 +1337,9 @@ def get_biggest_surprises_week(season: int, week: int):
         ORDER BY ecart DESC
     """
     df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_explosive_plays_week(season: int, week: int):
     """Seuils : 20+ yards en passe, 10+ yards en course — standard NFL
     pour qualifier un jeu d'explosif."""
@@ -1355,10 +1365,11 @@ def get_explosive_plays_week(season: int, week: int):
         LIMIT 5
     """
     top_plays = con.execute(plays_query, [season, week]).fetchdf()
-    con.close()
     return top_teams, top_plays
 
+@st.cache_data(ttl=3600)
 def get_turnover_battle_week(season: int, week: int):
+    """Différentiel de turnovers (prises - pertes) par équipe sur une semaine précise."""
     con = get_connection()
     query = """
         WITH giveaways AS (
@@ -1382,10 +1393,11 @@ def get_turnover_battle_week(season: int, week: int):
         ORDER BY differentiel DESC
     """
     df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_pressure_leaders_week(season: int, week: int):
+    """Équipes générant le plus de pression défensive sur une semaine précise."""
     con = get_connection()
     # CAST(... AS DOUBLE) plutôt que CASE WHEN was_pressure THEN :
     # la colonne peut être stockée en DOUBLE (0.0/1.0/NaN) après passage
@@ -1402,7 +1414,6 @@ def get_pressure_leaders_week(season: int, week: int):
         LIMIT 5
     """
     df = con.execute(query, [season, week]).fetchdf()
-    con.close()
     return df
 
 
@@ -1415,7 +1426,9 @@ def get_pressure_leaders_week(season: int, week: int):
 # SOCIAL CARDS — VARIANTES CUMULÉES (semaine 1 → semaine sélectionnée)
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10):
+    """Top 3 QB de la semaine (sélection), avec EPA cumulé depuis le début de saison (affichage) — pour Social Cards."""
     con = get_connection()
     query = """
         WITH weekly AS (
@@ -1440,10 +1453,11 @@ def get_social_top_qb_week(season: int, week: int, min_dropbacks_week: int = 10)
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_dropbacks_week, season, week, season]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
+    """Top 3 RB de la semaine (sélection), avec EPA cumulé depuis le début de saison (affichage) — pour Social Cards."""
     con = get_connection()
     query = """
         WITH weekly AS (
@@ -1468,10 +1482,11 @@ def get_social_top_rb_week(season: int, week: int, min_carries_week: int = 5):
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_carries_week, season, week, season]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
+    """Top 3 receveurs de la semaine (sélection), avec EPA cumulé depuis le début de saison (affichage) — pour Social Cards."""
     con = get_connection()
     query = """
         WITH weekly AS (
@@ -1496,10 +1511,11 @@ def get_social_top_wr_week(season: int, week: int, min_targets_week: int = 3):
         LIMIT 3
     """
     df = con.execute(query, [season, week, min_targets_week, season, week, season]).fetchdf()
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_social_best_offense_week(season: int, week: int):
+    """Meilleure attaque de la semaine (sélection), avec EPA cumulé depuis le début de saison (affichage) — pour Social Cards."""
     con = get_connection()
     query = """
         WITH weekly AS (
@@ -1520,7 +1536,6 @@ def get_social_best_offense_week(season: int, week: int):
         LIMIT 3
     """
     df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
     return df
 
 # NOTE AUDIT : une deuxième définition de cette fonction existait plus bas dans
@@ -1528,7 +1543,9 @@ def get_social_best_offense_week(season: int, week: int):
 # semaine 1 → semaine sélectionnée. Elle écrasait silencieusement celle-ci
 # (Python garde la dernière définition d'une fonction dupliquée), ce qui cassait
 # la cohérence avec les 4 fonctions sœurs ci-dessus. Supprimée lors de l'audit.
+@st.cache_data(ttl=3600)
 def get_social_best_defense_week(season: int, week: int):
+    """Meilleure défense de la semaine (sélection), avec EPA cumulé depuis le début de saison (affichage) — pour Social Cards."""
     con = get_connection()
     query = """
         WITH weekly AS (
@@ -1549,7 +1566,6 @@ def get_social_best_defense_week(season: int, week: int):
         LIMIT 3
     """
     df = con.execute(query, [season, week, season, week]).fetchdf()
-    con.close()
     return df
 
 
@@ -1557,6 +1573,7 @@ def get_social_best_defense_week(season: int, week: int):
 # HOME — PAGE D'ACCUEIL
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def get_home_stats():
     """Chiffres réels de la base, pour le bandeau de la page d'accueil."""
     con = get_connection()
@@ -1569,7 +1586,6 @@ def get_home_stats():
     ).fetchdf()["n"].iloc[0]
     total_teams = con.execute("SELECT COUNT(*) AS n FROM teams").fetchdf()["n"].iloc[0]
     total_players = con.execute("SELECT COUNT(DISTINCT player_id) AS n FROM rosters").fetchdf()["n"].iloc[0]
-    con.close()
     return {
         "saison_min": int(seasons["min_s"]),
         "saison_max": int(seasons["max_s"]),
@@ -1580,6 +1596,7 @@ def get_home_stats():
         "total_players": int(total_players),
     }
 
+@st.cache_data(ttl=3600)
 def get_home_current_season():
     """Saison la plus récente ayant au moins un match joué (évite de
     pointer sur une saison à venir sans résultats, comme 2026 mi-année)."""
@@ -1589,10 +1606,11 @@ def get_home_current_season():
         WHERE home_score IS NOT NULL AND away_score IS NOT NULL
     """
     df = con.execute(query).fetchdf()
-    con.close()
     return int(df["season"].iloc[0])
 
+@st.cache_data(ttl=3600)
 def get_home_top_teams(season: int, limit: int = 7):
+    """Top équipes de la saison en cours, pour l'aperçu affiché sur la page d'accueil."""
     con = get_connection()
     query = """
         SELECT posteam AS team, AVG(epa) AS epa_offense
@@ -1603,12 +1621,12 @@ def get_home_top_teams(season: int, limit: int = 7):
         LIMIT ?
     """
     df = con.execute(query, [season, limit]).fetchdf()
-    con.close()
     return df
 
 # Position réelle lue depuis rosters (pas déduite du rôle offensif) : un
 # receveur de passes peut être WR, TE ou RB selon le joueur — hardcoder 'WR'
 # affichait à tort des tight ends comme WR, corrigé via COALESCE(ANY_VALUE(...)).
+@st.cache_data(ttl=3600)
 def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
     """Top joueurs offensifs par yards bruts. """
     con = get_connection()
@@ -1660,10 +1678,11 @@ def get_home_top_players(season: int, poste: str | None = None, limit: int = 5):
         """
         df = con.execute(query, [season, season, season, limit]).fetchdf()
 
-    con.close()
     return df
 
+@st.cache_data(ttl=3600)
 def get_home_recent_games(season: int, limit: int = 7):
+    """Derniers matchs joués de la saison en cours, pour l'aperçu affiché sur la page d'accueil."""
     con = get_connection()
     query = """
         SELECT week, gameday, home_team, away_team, home_score, away_score
@@ -1673,7 +1692,6 @@ def get_home_recent_games(season: int, limit: int = 7):
         LIMIT ?
     """
     df = con.execute(query, [season, limit]).fetchdf()
-    con.close()
     return df
 
 
@@ -1731,30 +1749,25 @@ TRADUCTIONS_COLONNES = {
 def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
                      show_team_logos=True, player_col=None):
     """Applique couleur de ligne (par équipe), contraste de texte, arrondi
-    des décimales, logo d'équipe, traduction des colonnes et style des en-têtes.
+    des décimales, logo d'équipe, traduction des colonnes, et style des en-têtes.
 
-    couleur_unique : couleur unique pour tous les fonds de ligne.
-    show_team_logos : affiche le logo devant l'abréviation de l'équipe.
-    player_col : nom de la colonne joueur. Si une colonne photo_url est présente,
-                 affiche la photo devant le nom.
+    couleur_unique : à utiliser quand le tableau ne concerne qu'une seule
+    équipe (ex. page 2), donc pas de colonne "team" par ligne à mapper.
+    player_col : nom de la colonne joueur, si une colonne "photo_url" est
+    présente dans df, pour combiner photo + nom dans la même cellule.
     """
-
     df = df.reset_index(drop=True).copy()
 
-    # Détermination des couleurs de fond des lignes
     if couleur_unique is not None:
         fonds = [couleur_unique] * len(df)
         affichage = df.copy()
-
     elif "team_color" in df.columns:
         fonds = df["team_color"].tolist()
         affichage = df.drop(columns=["team_color"])
-
     elif team_col in df.columns:
         colors = get_team_colors()
         fonds = [colors.get(t, "#1f77b4") for t in df[team_col]]
         affichage = df.copy()
-
     else:
         fonds = ["#f0f0f0"] * len(df)
         affichage = df.copy()
@@ -1765,7 +1778,8 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         i = row.name
         return [f"background-color: {fonds[i]}; color: {textes[i]}"] * len(row)
 
-    # Logos des équipes
+    numeric_cols = affichage.select_dtypes(include="float").columns.tolist()
+
     if show_team_logos and team_col in affichage.columns:
         logos = get_team_logos()
 
@@ -1774,8 +1788,8 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
             if url:
                 return (
                     f'<span style="white-space:nowrap;">'
-                    f'<span style="display:inline-block;background:white;'
-                    f'border-radius:50%;padding:2px;margin-right:6px;line-height:0;">'
+                    f'<span style="display:inline-block;background:white;border-radius:50%;'
+                    f'padding:2px;margin-right:6px;line-height:0;">'
                     f'<img src="{url}" height="18" style="display:block;">'
                     f'</span>{abbr}'
                     f'</span>'
@@ -1784,86 +1798,40 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
 
         affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
 
-    # Photos des joueurs
     if player_col and player_col in affichage.columns and "photo_url" in affichage.columns:
-
         def _cell_avec_photo(row):
             url = row["photo_url"]
             nom = row[player_col]
-
             if isinstance(url, str) and url:
                 return (
                     f'<span style="white-space:nowrap;">'
-                    f'<img src="{url}" height="28" '
-                    f'style="vertical-align:middle;margin-right:6px;border-radius:50%;">'
-                    f'{nom}</span>'
+                    f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
+                    f'</span>'
                 )
-
             return nom
 
         affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
         affichage = affichage.drop(columns=["photo_url"])
 
-    # Traduction des noms de colonnes
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
+    format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
 
-    # Colonnes à afficher comme des entiers
-    integer_cols = {
-        "drive",
-        "qtr",
-        "down",
-        "ydstogo",
-        "yardline",
-        "yardline_100",
-        "play_id",
-    }
-
-    # Création du dictionnaire de formatage
-    format_dict = {}
-
-    for col in df.columns:
-
-        nom_affiche = TRADUCTIONS_COLONNES.get(col, col)
-
-        if nom_affiche not in affichage.columns:
-            continue
-
-        if col in integer_cols:
-
-            format_dict[nom_affiche] = (
-                lambda x: "" if pd.isna(x) else f"{int(x)}"
-            )
-
-        elif pd.api.types.is_float_dtype(df[col]):
-
-            format_dict[nom_affiche] = f"{{:.{decimals}f}}"
-
-    # Style des tableaux
     header_styles = [
-        {
-            "selector": "th",
-            "props": [
-                ("background-color", "#111827"),
-                ("color", "white"),
-                ("font-weight", "600"),
-                ("text-align", "left"),
-                ("padding", "10px 14px"),
-                ("border-bottom", "2px solid #374151"),
-            ],
-        },
-        {
-            "selector": "td",
-            "props": [
-                ("padding", "8px 14px"),
-            ],
-        },
-        {
-            "selector": "table",
-            "props": [
-                ("border-collapse", "collapse"),
-                ("width", "100%"),
-            ],
-        },
+        {"selector": "th", "props": [
+            ("background-color", "#111827"),
+            ("color", "white"),
+            ("font-weight", "600"),
+            ("text-align", "left"),
+            ("padding", "10px 14px"),
+            ("border-bottom", "2px solid #374151"),
+        ]},
+        {"selector": "td", "props": [
+            ("padding", "8px 14px"),
+        ]},
+        {"selector": "table", "props": [
+            ("border-collapse", "collapse"),
+            ("width", "100%"),
+        ]},
     ]
 
     return (
@@ -1873,6 +1841,7 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         .set_table_styles(header_styles)
         .hide(axis="index")
     )
+
 # st.dataframe() ignore le style des en-têtes (set_table_styles) d'un Styler —
 # il ne respecte que les couleurs cellule par cellule. D'où le rendu HTML brut.
 # Contrepartie assumée : pas de tri interactif au clic sur une colonne.
@@ -2055,6 +2024,7 @@ def render_team_podium(df, metric_col, decimals=0):
     st.iframe(html, height=320)
 
 def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
+    """Affiche un classement d'équipes sous forme de liste HTML compacte (logo, valeur), utilisé sur Home."""
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
@@ -2089,6 +2059,7 @@ def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
     st.iframe(html, height=min(60 * len(df) + 20, 360))
 
 def render_top_players_list(df):
+    """Affiche un classement de joueurs sous forme de liste HTML compacte (photo, poste, yards), utilisé sur Home."""
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
@@ -2144,6 +2115,7 @@ def render_top_players_list(df):
     st.iframe(html, height=min(58 * len(df) + 20, 340))
 
 def render_recent_games_list(df):
+    """Affiche les derniers matchs sous forme de liste HTML compacte (logos, score), utilisé sur Home."""
     if df.empty:
         st.info("Aucun match disponible.")
         return
@@ -2282,3 +2254,4 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
     </body></html>
     """
     st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
+
