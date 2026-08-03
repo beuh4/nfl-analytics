@@ -17,38 +17,44 @@ from queries import (
 st.set_page_config(page_title="Rankings", layout="wide")
 st.title("Rankings")
 
+# Sidebar avec filtre par saison global
+seasons = get_available_seasons()
+with st.sidebar:
+    st.header("🔍 Filtres")
+    selected_season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="rankings_season")
+
 onglet_semaine, onglet_saison = st.tabs(["Cette semaine", "Cette saison"])
 
 with onglet_semaine:
-    seasons = get_available_seasons()
-    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="rank_week_season")
-    weeks = get_weeks_for_season(season)
+    weeks = get_weeks_for_season(selected_season)
+    week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="rank_week_week")
+    weeks = get_weeks_for_season(selected_season)
     week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="rank_week_week")
 
     st.divider()
     col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Top 3 QB — EPA/dropback")
-        render_podium(get_top_qb_week(season, week), metric_col="epa_per_play")
+        render_podium(get_top_qb_week(selected_season, week), metric_col="epa_per_play")
     with col2:
         st.subheader("Top 3 RB — EPA/course")
-        render_podium(get_top_rb_week(season, week), metric_col="epa_per_play")
+        render_podium(get_top_rb_week(selected_season, week), metric_col="epa_per_play")
     with col3:
         st.subheader("Top 3 Receveurs — EPA/cible")
-        render_podium(get_top_wr_week(season, week), metric_col="epa_per_play")
+        render_podium(get_top_wr_week(selected_season, week), metric_col="epa_per_play")
 
     st.divider()
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Meilleure attaque de la semaine")
-        render_table(style_dataframe(get_best_offense_week(season, week)))
+        render_table(style_dataframe(get_best_offense_week(selected_season, week)))
     with col2:
         st.subheader("Meilleure défense de la semaine")
-        render_table(style_dataframe(get_best_defense_week(season, week)))
+        render_table(style_dataframe(get_best_defense_week(selected_season, week)))
 
     st.divider()
     st.subheader("Équipes qui sortent du lot vs leur moyenne saison")
-    df_surprises = get_biggest_surprises_week(season, week)
+    df_surprises = get_biggest_surprises_week(selected_season, week)
     col1, col2 = st.columns(2)
     with col1:
         st.write("Plus forte surperformance")
@@ -59,7 +65,7 @@ with onglet_semaine:
 
     st.divider()
     st.subheader("Plays explosifs")
-    top_teams, top_plays = get_explosive_plays_week(season, week)
+    top_teams, top_plays = get_explosive_plays_week(selected_season, week)
     col1, col2 = st.columns(2)
     with col1:
         st.write("Équipes — nombre de plays explosifs")
@@ -72,12 +78,12 @@ with onglet_semaine:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Bataille des turnovers")
-        render_table(style_dataframe(get_turnover_battle_week(season, week)))
+        render_table(style_dataframe(get_turnover_battle_week(selected_season, week)))
     with col2:
         st.subheader("Pressions générées")
-        if season < 2023:
+        if selected_season < 2023:
             st.caption("Donnée de pression partiellement disponible avant 2023.")
-        render_table(style_dataframe(get_pressure_leaders_week(season, week)))
+        render_table(style_dataframe(get_pressure_leaders_week(selected_season, week)))
 
     st.divider()
     st.subheader("Classement de la semaine — avec évolution")
@@ -86,7 +92,7 @@ with onglet_semaine:
     col1, col2 = st.columns(2)
     with col1:
         st.write("**Équipes — EPA Offensif**")
-        render_ranking_with_movement(get_team_weekly_movement(season, week), value_col="epa_offense")
+        render_ranking_with_movement(get_team_weekly_movement(selected_season, week), value_col="epa_offense")
     with col2:
         st.write("**QB — EPA/Dropback**")
         render_ranking_with_movement(get_player_weekly_movement(season, week, "passing"), value_col="epa_per_play", is_player=True)
@@ -100,7 +106,7 @@ with onglet_semaine:
         render_ranking_with_movement(get_player_weekly_movement(season, week, "receiving"), value_col="epa_per_play", is_player=True)
 
 with onglet_saison:
-    season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="rank_season_season")
+    season = selected_season
     st.caption("Pour la saison en cours, les statistiques reflètent uniquement les semaines déjà jouées.")
 
     st.divider()
@@ -108,34 +114,34 @@ with onglet_saison:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Top 3 QB — Yards lancés")
-        render_podium(get_top_qb_season_yards(season), metric_col="yards", decimals=0)
+        render_podium(get_top_qb_season_yards(selected_season), metric_col="yards", decimals=0)
     with col2:
         st.subheader("Top 3 RB — Yards parcourus")
-        render_podium(get_top_rb_season_yards(season), metric_col="yards", decimals=0)
+        render_podium(get_top_rb_season_yards(selected_season), metric_col="yards", decimals=0)
     with col3:
         st.subheader("Top 3 Receveurs — Yards attrapés")
-        render_podium(get_top_wr_season_yards(season), metric_col="yards", decimals=0)
+        render_podium(get_top_wr_season_yards(selected_season), metric_col="yards", decimals=0)
 
     st.divider()
     st.subheader("Top 3 Équipes — Yards offensifs totaux")
-    render_team_podium(get_top_teams_offense_yards_season(season), metric_col="yards", decimals=0)
+    render_team_podium(get_top_teams_offense_yards_season(selected_season), metric_col="yards", decimals=0)
 
     st.divider()
     st.header("Performance EPA")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Top 3 QB — EPA/dropback")
-        render_podium(get_top_qb_season_epa(season), metric_col="epa_per_play", decimals=3)
+        render_podium(get_top_qb_season_epa(selected_season), metric_col="epa_per_play", decimals=3)
     with col2:
         st.subheader("Top 3 RB — EPA/course")
-        render_podium(get_top_rb_season_epa(season), metric_col="epa_per_play", decimals=3)
+        render_podium(get_top_rb_season_epa(selected_season), metric_col="epa_per_play", decimals=3)
     with col3:
         st.subheader("Top 3 Receveurs — EPA/cible")
-        render_podium(get_top_wr_season_epa(season), metric_col="epa_per_play", decimals=3)
+        render_podium(get_top_wr_season_epa(selected_season), metric_col="epa_per_play", decimals=3)
 
     st.divider()
     col1, col2 = st.columns(2)
-    df_teams_epa = get_team_epa_offense_defense(season)
+    df_teams_epa = get_team_epa_offense_defense(selected_season)
     with col1:
         st.subheader("Top 3 Attaques — EPA offensif")
         render_team_podium(df_teams_epa.nlargest(3, "epa_offense").reset_index(drop=True), metric_col="epa_offense", decimals=3)
