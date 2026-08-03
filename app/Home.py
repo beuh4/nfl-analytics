@@ -4,8 +4,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from queries import (
-    get_home_stats, get_home_current_season, get_home_top_teams, get_home_top_players,
-    get_home_recent_games, render_top_teams_list, render_top_players_list, render_recent_games_list,
+    get_home_stats, get_home_current_season, get_home_recent_games, render_recent_games_list,
+    get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
+    get_top_qb_season_epa, get_team_epa_offense_defense,
+    get_season_sacks_leader, get_season_interceptions_leader, get_season_success_rate_leader,
+    render_insight_leaders,
 )
 from styles import HOME_CSS
 
@@ -40,28 +43,69 @@ def display_navigation_card(icon: str, title: str, description: str, page_path: 
         st.page_link(page_path, label="Ouvrir", icon="➡️")
 
 
-# ─── Aperçu de la saison ───
+# ─── Aperçu de la saison — insights, pas des tableaux ───
 st.subheader("Aperçu de la saison")
 
 home_season = get_home_current_season()
 st.caption(f"Données de la saison {home_season}")
 
-col_teams, col_players, col_games = st.columns(3)
 
-with col_teams:
-    st.write("**Top 7 équipes — EPA Offensif**")
-    render_top_teams_list(get_home_top_teams(home_season))
+def _leader_entry(label, df, name_col, team_col, value_col, value_fmt, photo=True):
+    """Construit une entrée pour render_insight_leaders à partir de la
+    première ligne d'un DataFrame déjà trié — gère le cas où aucun joueur
+    n'atteint encore le seuil qualifiant (ex. tout début de saison)."""
+    if df.empty:
+        return {"label": label, "name": "—", "team": None, "value": "—"}
+    row = df.iloc[0]
+    return {
+        "label": label,
+        "name": row[name_col],
+        "team": row[team_col],
+        "value": value_fmt(row[value_col]),
+        "photo_url": row.get("photo_url") if photo else None,
+    }
+
+
+df_epa_ligue = get_team_epa_offense_defense(home_season)
+df_off_epa_sorted = df_epa_ligue.sort_values("epa_offense", ascending=False)
+df_def_epa_sorted = df_epa_ligue.sort_values("epa_defense", ascending=True)
+
+league_leaders = [
+    _leader_entry("Passing Yds", get_top_qb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
+    _leader_entry("Rushing Yds", get_top_rb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
+    _leader_entry("Receiving Yds", get_top_wr_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
+    _leader_entry("Sacks", get_season_sacks_leader(home_season), "player", "team", "sacks", lambda v: f"{v:.1f}"),
+    _leader_entry("Interceptions", get_season_interceptions_leader(home_season), "player", "team", "interceptions", lambda v: f"{int(v)}"),
+]
+
+analytics_leaders = [
+    _leader_entry("EPA/Play", get_top_qb_season_epa(home_season), "player", "team", "epa_per_play", lambda v: f"{v:.3f}"),
+    _leader_entry("Success Rate", get_season_success_rate_leader(home_season), "player", "team", "success_rate", lambda v: f"{v:.1%}"),
+    {
+        "label": "Offensive EPA",
+        "name": df_off_epa_sorted.iloc[0]["team_name"] if not df_off_epa_sorted.empty else "—",
+        "team": df_off_epa_sorted.iloc[0]["team"] if not df_off_epa_sorted.empty else None,
+        "value": f"{df_off_epa_sorted.iloc[0]['epa_offense']:.3f}" if not df_off_epa_sorted.empty else "—",
+    },
+    {
+        "label": "Defensive EPA",
+        "name": df_def_epa_sorted.iloc[0]["team_name"] if not df_def_epa_sorted.empty else "—",
+        "team": df_def_epa_sorted.iloc[0]["team"] if not df_def_epa_sorted.empty else None,
+        "value": f"{df_def_epa_sorted.iloc[0]['epa_defense']:.3f}" if not df_def_epa_sorted.empty else "—",
+    },
+]
+
+col_league, col_analytics, col_games = st.columns(3)
+
+with col_league:
+    st.write("**League Leaders**")
+    render_insight_leaders(league_leaders)
     st.page_link("pages/4_Rankings.py", label="Voir tous les classements", icon="🏆")
 
-with col_players:
-    st.write("**Top 5 joueurs offensifs — Yards**")
-    poste_choisi = st.radio(
-        "Poste", ["QB", "RB", "WR"], horizontal=True,
-        key=f"home_poste_{home_season}", label_visibility="collapsed",
-    )
-    filtre_poste = None if poste_choisi == "Tous" else poste_choisi
-    render_top_players_list(get_home_top_players(home_season, poste=filtre_poste))
-    st.page_link("pages/2_Players.py", label="Explorer les joueurs", icon="👤")
+with col_analytics:
+    st.write("**Analytics Leaders** ⭐")
+    render_insight_leaders(analytics_leaders)
+    st.page_link("pages/5_Analytics.py", label="Explorer les analytics", icon="📊")
 
 with col_games:
     st.write("**Derniers matchs**")

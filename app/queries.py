@@ -1736,8 +1736,81 @@ def get_home_recent_games(season: int, limit: int = 7):
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# RENDU VISUEL (HTML / iframe)
+@st.cache_data(ttl=3600)
+def get_season_sacks_leader(season: int):
+    """Joueur ayant cumulé le plus de sacks (pleins + 0,5 x demi-sacks
+    partagés) sur la saison entière — pour le panneau League Leaders."""
+    con = get_connection()
+    query = """
+        WITH sacks_pleins AS (
+            SELECT sack_player_id AS player_id, COUNT(*) AS n
+            FROM plays WHERE season = ? AND sack_player_id IS NOT NULL
+            GROUP BY sack_player_id
+        ),
+        demi_sacks AS (
+            SELECT player_id, COUNT(*) AS n FROM (
+                SELECT half_sack_1_player_id AS player_id FROM plays WHERE season = ? AND half_sack_1_player_id IS NOT NULL
+                UNION ALL
+                SELECT half_sack_2_player_id AS player_id FROM plays WHERE season = ? AND half_sack_2_player_id IS NOT NULL
+            ) t GROUP BY player_id
+        ),
+        total AS (
+            SELECT COALESCE(sp.player_id, ds.player_id) AS player_id,
+                   COALESCE(sp.n, 0) + COALESCE(ds.n, 0) * 0.5 AS sacks
+            FROM sacks_pleins sp
+            FULL OUTER JOIN demi_sacks ds ON sp.player_id = ds.player_id
+        )
+        SELECT t.player_id, r.player_name AS player, r.team, r.headshot_url AS photo_url, t.sacks
+        FROM total t
+        LEFT JOIN rosters r ON t.player_id = r.player_id AND r.season = ?
+        ORDER BY t.sacks DESC
+        LIMIT 1
+    """
+    df = con.execute(query, [season, season, season, season]).fetchdf()
+    return df
+
+
+@st.cache_data(ttl=3600)
+def get_season_interceptions_leader(season: int):
+    """Joueur ayant intercepté le plus de passes (défensif) sur la saison —
+    pour le panneau League Leaders."""
+    con = get_connection()
+    query = """
+        WITH total AS (
+            SELECT interception_player_id AS player_id, COUNT(*) AS interceptions
+            FROM plays
+            WHERE season = ? AND interception_player_id IS NOT NULL
+            GROUP BY interception_player_id
+        )
+        SELECT t.player_id, r.player_name AS player, r.team, r.headshot_url AS photo_url, t.interceptions
+        FROM total t
+        LEFT JOIN rosters r ON t.player_id = r.player_id AND r.season = ?
+        ORDER BY t.interceptions DESC
+        LIMIT 1
+    """
+    df = con.execute(query, [season, season]).fetchdf()
+    return df
+
+
+@st.cache_data(ttl=3600)
+def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
+    """QB avec le meilleur taux de jeux réussis (success rate) sur ses
+    dropbacks, saison entière — pour le panneau Analytics Leaders."""
+    con = get_connection()
+    query = """
+        SELECT p.passer_player_name AS player, p.posteam AS team,
+               ROUND(AVG(CAST(p.success AS DOUBLE)), 3) AS success_rate,
+               ANY_VALUE(r.headshot_url) AS photo_url
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.qb_dropback = 1 AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY success_rate DESC
+        LIMIT 1
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    return df
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Traduction des noms de colonnes techniques vers un affichage lisible en
@@ -2266,3 +2339,50 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
     </body></html>
     """
     st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
+
+def render_insight_leaders(entries):
+    """Affiche une liste "qui domine sur quoi" : une ligne par métrique,
+    chacune montrant SON propre leader — pas un tableau classé sur une
+    seule métrique. Pensé pour un coup d'œil rapide sur la page d'accueil.
+
+    entries : liste de dicts {label, name, team (abréviation ou None),
+    value (déjà formaté en string), photo_url (optionnel)}."""
+    colors = get_team_colors()
+    logos = get_team_logos()
+
+    rows_html = ""
+    for e in entries:
+        team = e.get("team")
+        couleur = colors.get(team, "#374151") if team else "#374151"
+        logo = logos.get(team, "") if team else ""
+        photo = e.get("photo_url")
+
+        if isinstance(photo, str) and photo:
+            avatar = (
+                f'<img src="{photo}" style="width:30px;height:30px;border-radius:50%;'
+                f'object-fit:cover;border:2px solid {couleur};flex-shrink:0;">'
+            )
+        elif logo:
+            avatar = f'<img src="{logo}" height="26" style="flex-shrink:0;">'
+        else:
+            avatar = '<div style="width:30px;flex-shrink:0;"></div>'
+
+        nom = e.get("name") or "—"
+        rows_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
+            <div style="width:100px;flex-shrink:0;font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.04em;">{e['label']}</div>
+            {avatar}
+            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
+            <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;flex-shrink:0;">{e['value']}</div>
+        </div>
+        """
+
+    html = f"""
+    <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
+    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
+    </style></head><body>
+    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
+    </body></html>
+    """
+    st.iframe(html, height=min(52 * len(entries) + 20, 320))
