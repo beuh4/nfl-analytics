@@ -1,6 +1,8 @@
 import nfl_data_py as nfl
 import sys
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import traceback
 
 # BUG CORRIGÉ LORS DE L'AUDIT : ce fichier utilisait `range(2015, 2026)`,
 # qui exclut 2026 (comportement standard de range en Python) — la saison
@@ -65,28 +67,59 @@ OUTPUT_DIR = Path("data/seasons")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def fetch_season(season: int) -> None:
-    print(f"Téléchargement saison {season}...")
-    df = nfl.import_pbp_data([season])
+def fetch_season(season: int) -> tuple[int, str, Exception | None]:
+    """Télécharge les données play-by-play pour une saison donnée.
+    
+    Retourne :
+        tuple de (season, message, exception) où exception est None si succès.
+    """
+    try:
+        print(f"Téléchargement saison {season}...")
+        df = nfl.import_pbp_data([season])
 
-    presentes = [c for c in COLONNES_PLAYS if c in df.columns]
-    absentes = [c for c in COLONNES_PLAYS if c not in df.columns]
-    if absentes:
-        print(f"  Colonnes absentes pour {season} : {absentes}")
+        presentes = [c for c in COLONNES_PLAYS if c in df.columns]
+        absentes = [c for c in COLONNES_PLAYS if c not in df.columns]
+        if absentes:
+            print(f"  Colonnes absentes pour {season} : {absentes}")
 
-    df = df[presentes]
+        df = df[presentes]
 
-    output_path = OUTPUT_DIR / f"{season}.parquet"
-    df.to_parquet(output_path, index=False)
-    print(f"  Sauvegardé : {output_path} ({len(df)} lignes)")
+        output_path = OUTPUT_DIR / f"{season}.parquet"
+        df.to_parquet(output_path, index=False)
+        message = f"  Sauvegardé : {output_path} ({len(df)} lignes)"
+        print(message)
+        return (season, message, None)
+    except Exception as e:
+        error_msg = f"  Échec pour {season} : {e}"
+        print(error_msg)
+        # Imprimer la trace complète pour le débogage
+        traceback.print_exc()
+        return (season, error_msg, e)
 
 
 if __name__ == "__main__":
-    # Une saison qui échoue (ex. 2026 pas encore commencée, réponse vide
-    # ou instable côté source) ne doit pas empêcher les autres saisons
-    # déjà stables d'être retéléchargées.
-    for season in SEASONS:
-        try:
-            fetch_season(season)
-        except Exception as e:
-            print(f"  Échec pour {season} : {e}")
+    # Nombre maximal de threads (par défaut : nombre de CPU * 5 pour les tâches I/O-bound)
+    MAX_WORKERS = min(8, len(SEASONS))  # Limiter à 8 pour éviter de surcharger l'API
+    
+    print(f"Téléchargement des saisons {FIRST_SEASON}-{CURRENT_SEASON} en parallèle (max {MAX_WORKERS} threads)...")
+    print(f"Saisons à traiter : {SEASONS}")
+    
+    # Utiliser ThreadPoolExecutor pour paralléliser les téléchargements
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Soumettre toutes les tâches
+        futures = {executor.submit(fetch_season, season): season for season in SEASONS}
+        
+        # Attendre la fin de toutes les tâches et gérer les résultats
+        success_count = 0
+        failure_count = 0
+        
+        for future in as_completed(futures):
+            season, message, error = future.result()
+            if error is None:
+                success_count += 1
+            else:
+                failure_count += 1
+    
+    print(f"\nRésumé : {success_count} saisons téléchargées, {failure_count} échecs.")
+    if failure_count > 0:
+        print("Certaines saisons ont échoué. Vérifiez les messages d'erreur ci-dessus.")
