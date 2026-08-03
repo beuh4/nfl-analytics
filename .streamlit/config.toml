@@ -1,7 +1,21 @@
 [theme]
+# Thème clair par défaut (peut être basculé en sombre via un toggle dans l'app)
 base = "light"
-primaryColor = "#EA580C"
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#EFF2F6"
-textColor = "#1E293B"
+primaryColor = "#EA580C"  # Orange (couleur principale)
+backgroundColor = "#F8FAFC"  # Blanc cassé
+secondaryBackgroundColor = "#EFF2F6"  # Gris très clair
+textColor = "#1E293B"  # Gris foncé
 font = "sans serif"
+
+[server]
+# Configuration du serveur Streamlit
+headless = true
+port = 8501
+
+[client]
+# Caching activé pour de meilleures performances
+caching = true
+
+[logger]
+# Niveau de log
+level = "info"
