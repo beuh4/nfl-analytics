@@ -50,7 +50,7 @@ st.query_params["game"] = game_id
 
 st.divider()
 
-# ─── En-tête du match ───
+# ─── En-tête du match (commun aux deux onglets, reste hors tabs) ───
 info = get_game_info(game_id)
 if info.empty:
     st.error("Match introuvable.")
@@ -119,110 +119,114 @@ with col3:
 with col4:
     st.markdown(info_bloc("Prolongation", prolongation), unsafe_allow_html=True)
 
-
 st.divider()
 
-# ─── Meilleurs joueurs du match ───
-st.subheader("Meilleurs joueurs")
+onglet_resume, onglet_analyse = st.tabs(["Résumé", "Analyse ⭐ PRO"])
 
-col_away, col_home = st.columns(2)
-for col, team in [(col_away, info["away_team"]), (col_home, info["home_team"])]:
-    with col:
-        logo = logos.get(team, "")
-        couleur = colors.get(team, "#374151")
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-            f'<img src="{logo}" height="24"><span style="font-weight:700;color:{couleur};">{team}</span></div>',
-            unsafe_allow_html=True,
-        )
-        qb = get_game_top_performer(game_id, team, season, "passing")
-        rb = get_game_top_performer(game_id, team, season, "rushing")
-        wr = get_game_top_performer(game_id, team, season, "receiving")
-        render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur)
+# ═══════════════════════════════════════════════════════════════════════
+# RÉSUMÉ — accès libre : score, leaders, drives, play-by-play.
+# ═══════════════════════════════════════════════════════════════════════
+with onglet_resume:
 
-st.divider()
+    st.subheader("Meilleurs joueurs")
+    col_away, col_home = st.columns(2)
+    for col, team in [(col_away, info["away_team"]), (col_home, info["home_team"])]:
+        with col:
+            logo = logos.get(team, "")
+            couleur = colors.get(team, "#374151")
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+                f'<img src="{logo}" height="24"><span style="font-weight:700;color:{couleur};">{team}</span></div>',
+                unsafe_allow_html=True,
+            )
+            qb = get_game_top_performer(game_id, team, season, "passing")
+            rb = get_game_top_performer(game_id, team, season, "rushing")
+            wr = get_game_top_performer(game_id, team, season, "receiving")
+            render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur)
 
-# ─── Win Probability ───
-st.subheader("Win Probability")
-wp_df = get_game_win_probability(game_id)
-if not wp_df.empty:
-    fig_wp = go.Figure()
-    fig_wp.add_trace(go.Scatter(
-        x=wp_df["progression"], y=wp_df["home_wp"] * 100,
-        mode="lines", fill="tozeroy",
-        line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
-        name=info["home_team"],
-    ))
-    fig_wp.add_hline(y=50, line_dash="dash", line_color="gray")
-    fig_wp.update_layout(
-        xaxis_title="Progression du match", yaxis_title=f"Probabilité de victoire — {info['home_team']} (%)",
-        yaxis_range=[0, 100], height=350,
-    )
-    st.plotly_chart(fig_wp, use_container_width=True, key=f"wp_{game_id}")
-else:
-    st.info("Données de win probability indisponibles pour ce match.")
+    st.divider()
 
-st.divider()
-
-# ─── Progression du score ───
-st.subheader("Progression du score")
-score_df = get_game_score_progression(game_id)
-if not score_df.empty:
-    fig_score = go.Figure()
-    fig_score.add_trace(go.Scatter(
-        x=score_df["progression"], y=score_df["ecart_domicile"],
-        mode="lines", line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
-    ))
-    fig_score.add_hline(y=0, line_dash="dash", line_color="gray")
-    fig_score.update_layout(
-        xaxis_title="Progression du match",
-        yaxis_title=f"Écart ({info['home_team']} positif)",
-        height=350,
-    )
-    st.plotly_chart(fig_score, use_container_width=True, key=f"score_{game_id}")
-else:
-    st.info("Données de score indisponibles pour ce match.")
-
-st.divider()
-
-# ─── EPA cumulé ───
-st.subheader("EPA cumulé du match")
-epa_df = get_game_epa_cumulative(game_id)
-if not epa_df.empty:
-    fig_epa = go.Figure()
-    for team in epa_df["posteam"].unique():
-        df_team = epa_df[epa_df["posteam"] == team]
-        fig_epa.add_trace(go.Scatter(
-            x=df_team["progression"], y=df_team["epa_cumule"],
-            mode="lines", name=team,
-            line=dict(color=colors.get(team, "#374151"), width=2),
+    st.subheader("Progression du score")
+    score_df = get_game_score_progression(game_id)
+    if not score_df.empty:
+        fig_score = go.Figure()
+        fig_score.add_trace(go.Scatter(
+            x=score_df["progression"], y=score_df["ecart_domicile"],
+            mode="lines", line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
         ))
-    fig_epa.add_hline(y=0, line_dash="dash", line_color="gray")
-    fig_epa.update_layout(xaxis_title="Progression du match", yaxis_title="EPA cumulé", height=350)
-    st.plotly_chart(fig_epa, use_container_width=True, key=f"epa_{game_id}")
-else:
-    st.info("Données EPA indisponibles pour ce match.")
+        fig_score.add_hline(y=0, line_dash="dash", line_color="gray")
+        fig_score.update_layout(
+            xaxis_title="Progression du match",
+            yaxis_title=f"Écart ({info['home_team']} positif)",
+            height=350,
+        )
+        st.plotly_chart(fig_score, use_container_width=True, key=f"score_{game_id}")
+    else:
+        st.info("Données de score indisponibles pour ce match.")
 
-st.divider()
+    st.divider()
 
-# ─── Drives ───
-st.subheader("Résumé des drives")
-drives = get_game_drives(game_id)
-if not drives.empty:
-    render_table(style_dataframe(drives, team_col="team", integer_cols=["drive"]))
-else:
-    st.info("Données de drives indisponibles pour ce match.")
+    st.subheader("Résumé des drives")
+    drives = get_game_drives(game_id)
+    if not drives.empty:
+        render_table(style_dataframe(drives, team_col="team", integer_cols=["drive"]))
+    else:
+        st.info("Données de drives indisponibles pour ce match.")
 
-st.divider()
+    st.divider()
 
-# ─── Play-by-play ───
-st.subheader("Play-by-play")
-quarts_dispo = ["Tous", 1, 2, 3, 4, 5]
-quart_choisi = st.selectbox("Filtrer par quart-temps", quarts_dispo, key=f"quarter_{game_id}")
-filtre_quart = None if quart_choisi == "Tous" else quart_choisi
+    st.subheader("Play-by-play")
+    quarts_dispo = ["Tous", 1, 2, 3, 4, 5]
+    quart_choisi = st.selectbox("Filtrer par quart-temps", quarts_dispo, key=f"quarter_{game_id}")
+    filtre_quart = None if quart_choisi == "Tous" else quart_choisi
 
-pbp = get_game_play_by_play(game_id, quarter=filtre_quart)
-if not pbp.empty:
-    render_table(style_dataframe(pbp, team_col="posteam", integer_cols=["qtr", "down", "ydstogo", "yardline_100"]))
-else:
-    st.info("Play-by-play indisponible pour ce match.")
+    pbp = get_game_play_by_play(game_id, quarter=filtre_quart)
+    if not pbp.empty:
+        render_table(style_dataframe(pbp, team_col="posteam", integer_cols=["qtr", "down", "ydstogo", "yardline_100"]))
+    else:
+        st.info("Play-by-play indisponible pour ce match.")
+
+# ═══════════════════════════════════════════════════════════════════════
+# ANALYSE — Win Probability, EPA cumulé. Aucun paiement n'est en place :
+# contenu visible, juste étiqueté comme futur payant.
+# ═══════════════════════════════════════════════════════════════════════
+with onglet_analyse:
+    st.caption("⭐ Ces analyses feront partie de **NFL Analytics Pro** — en accès libre pour l'instant.")
+
+    st.subheader("Win Probability")
+    wp_df = get_game_win_probability(game_id)
+    if not wp_df.empty:
+        fig_wp = go.Figure()
+        fig_wp.add_trace(go.Scatter(
+            x=wp_df["progression"], y=wp_df["home_wp"] * 100,
+            mode="lines", fill="tozeroy",
+            line=dict(color=colors.get(info["home_team"], "#374151"), width=2),
+            name=info["home_team"],
+        ))
+        fig_wp.add_hline(y=50, line_dash="dash", line_color="gray")
+        fig_wp.update_layout(
+            xaxis_title="Progression du match", yaxis_title=f"Probabilité de victoire — {info['home_team']} (%)",
+            yaxis_range=[0, 100], height=350,
+        )
+        st.plotly_chart(fig_wp, use_container_width=True, key=f"wp_{game_id}")
+    else:
+        st.info("Données de win probability indisponibles pour ce match.")
+
+    st.divider()
+
+    st.subheader("EPA cumulé du match")
+    epa_df = get_game_epa_cumulative(game_id)
+    if not epa_df.empty:
+        fig_epa = go.Figure()
+        for team in epa_df["posteam"].unique():
+            df_team = epa_df[epa_df["posteam"] == team]
+            fig_epa.add_trace(go.Scatter(
+                x=df_team["progression"], y=df_team["epa_cumule"],
+                mode="lines", name=team,
+                line=dict(color=colors.get(team, "#374151"), width=2),
+            ))
+        fig_epa.add_hline(y=0, line_dash="dash", line_color="gray")
+        fig_epa.update_layout(xaxis_title="Progression du match", yaxis_title="EPA cumulé", height=350)
+        st.plotly_chart(fig_epa, use_container_width=True, key=f"epa_{game_id}")
+    else:
+        st.info("Données EPA indisponibles pour ce match.")

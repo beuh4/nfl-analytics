@@ -62,7 +62,7 @@ st.query_params["player"] = player_id
 
 st.divider()
 
-# ─── Bio ───
+# ─── Bio (commune aux deux onglets, reste hors tabs) ───
 bio = get_player_bio(player_id, season)
 if bio.empty:
     st.error("Aucune information disponible pour ce joueur.")
@@ -117,127 +117,162 @@ with col_info:
 
 st.divider()
 
-# ─── Passing ───
+# ─── Données communes, calculées une seule fois, réutilisées dans les deux onglets ───
 passing = get_player_passing_season(player_id, season)
-if not passing.empty and passing["dropbacks"].iloc[0] and passing["dropbacks"].iloc[0] > 0:
-    st.subheader("Passing")
-    p = passing.iloc[0]
-    classement_qb = get_qb_full_rankings(season)
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Tentatives", int(p["tentatives"]))
-    col2.metric("Complétions", int(p["completions"]))
-    col3.metric("Yards", f"{int(p['yards']):,}" if p["yards"] == p["yards"] else "—",
-                get_rank_label(classement_qb, player_id, "yards"))
-    col4.metric("TD / INT", f"{int(p['td'])} / {int(p['interceptions'])}")
-    col5.metric("EPA/Dropback", f"{p['epa_per_play']:.3f}",
-                get_rank_label(classement_qb, player_id, "epa_per_play"))
-
-    col1, col2 = st.columns(2)
-    col1.metric("CPOE", f"{p['cpoe']:+.1f}%" if p["cpoe"] == p["cpoe"] else "—",
-                get_rank_label(classement_qb, player_id, "cpoe"))
-    col2.metric("Air Yards Moy.", f"{p['air_yards_moy']:.1f}" if p["air_yards_moy"] == p["air_yards_moy"] else "—")
-
-    st.divider()
-
-# ─── Rushing ───
 rushing = get_player_rushing_season(player_id, season)
-if not rushing.empty and rushing["courses"].iloc[0] and rushing["courses"].iloc[0] > 0:
-    st.subheader("Rushing")
-    r = rushing.iloc[0]
-    classement_rb = get_rb_full_rankings(season)
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Courses", int(r["courses"]))
-    col2.metric("Yards", f"{int(r['yards']):,}" if r["yards"] == r["yards"] else "—",
-                get_rank_label(classement_rb, player_id, "yards"))
-    col3.metric("TD", int(r["td"]))
-    col4.metric("EPA/Course", f"{r['epa_per_play']:.3f}",
-                get_rank_label(classement_rb, player_id, "epa_per_play"))
-    st.divider()
-
-
-# ─── Receiving ───
 receiving = get_player_receiving_season(player_id, season)
-if not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].iloc[0] > 0:
-    st.subheader("Receiving")
-    rc = receiving.iloc[0]
-    classement_wr = get_wr_full_rankings(season)
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Cibles", int(rc["cibles"]))
-    col2.metric("Réceptions", int(rc["receptions"]))
-    col3.metric("Yards", f"{int(rc['yards']):,}" if rc["yards"] == rc["yards"] else "—",
-                get_rank_label(classement_wr, player_id, "yards"))
-    col4.metric("TD", int(rc["td"]))
-    col5.metric("EPA/Cible", f"{rc['epa_per_play']:.3f}",
-                get_rank_label(classement_wr, player_id, "epa_per_play"))
-
-    col1, col2 = st.columns(2)
-    col1.metric("Air Yards Moy.", f"{rc['air_yards_moy']:.1f}" if rc["air_yards_moy"] == rc["air_yards_moy"] else "—")
-    col2.metric("YAC Moy.", f"{rc['yac_moy']:.1f}" if rc["yac_moy"] == rc["yac_moy"] else "—")
-    st.divider()
-
-# ─── Defense ───
 defense = get_player_defensive_season(player_id, season)
-a_stats_defensives = not defense.empty and (
+
+a_passing = not passing.empty and passing["dropbacks"].iloc[0] and passing["dropbacks"].iloc[0] > 0
+a_rushing = not rushing.empty and rushing["courses"].iloc[0] and rushing["courses"].iloc[0] > 0
+a_receiving = not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].iloc[0] > 0
+a_defense = not defense.empty and (
     defense["tacles_totaux"].iloc[0] + defense["sacks_totaux"].iloc[0]
     + defense["interceptions"].iloc[0] + defense["passes_defendues"].iloc[0]
     + defense["fumbles_forces"].iloc[0]
 ) > 0
 
-if a_stats_defensives:
-    st.subheader("Defense")
-    d = defense.iloc[0]
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Tacles (total)", int(d["tacles_totaux"]))
-    col2.metric("Tacles pour perte", int(d["tacles_pour_perte"]))
-    col3.metric("Sacks", f"{d['sacks_totaux']:.1f}")
-    col4.metric("Pressions QB", int(d["pressions_qb"]))
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Interceptions", int(d["interceptions"]))
-    col2.metric("Passes défendues", int(d["passes_defendues"]))
-    col3.metric("Fumbles forcés", int(d["fumbles_forces"]))
-    st.divider()
-
-# ─── Tendance EPA — semaine par semaine (offense) ───
 roles_actifs = []
-if not passing.empty and passing["dropbacks"].iloc[0] and passing["dropbacks"].iloc[0] > 0:
+if a_passing:
     roles_actifs.append(("passing", "Passing"))
-if not rushing.empty and rushing["courses"].iloc[0] and rushing["courses"].iloc[0] > 0:
+if a_rushing:
     roles_actifs.append(("rushing", "Rushing"))
-if not receiving.empty and receiving["cibles"].iloc[0] and receiving["cibles"].iloc[0] > 0:
+if a_receiving:
     roles_actifs.append(("receiving", "Receiving"))
 
-if roles_actifs:
-    st.subheader("Tendance EPA — semaine par semaine")
-    fig = go.Figure()
-    styles = [dict(width=3), dict(width=2, dash="dot"), dict(width=2, dash="dash")]
-    for (role, label), style in zip(roles_actifs, styles):
-        df_trend = get_player_weekly_trend(player_id, season, role)
-        fig.add_trace(go.Scatter(
-            x=df_trend["week"], y=df_trend["epa_per_play"], mode="lines+markers",
-            name=label, line=dict(color=couleur_equipe, **style),
+onglet_overview, onglet_avance = st.tabs(["Overview", "Advanced Analytics ⭐ PRO"])
+
+# ═══════════════════════════════════════════════════════════════════════
+# OVERVIEW — accès libre : statistiques "classiques" (yards, TD, tacles...)
+# ═══════════════════════════════════════════════════════════════════════
+with onglet_overview:
+
+    if a_passing:
+        st.subheader("Passing")
+        p = passing.iloc[0]
+        classement_qb = get_qb_full_rankings(season)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Tentatives", int(p["tentatives"]))
+        col2.metric("Complétions", int(p["completions"]))
+        col3.metric("Yards", f"{int(p['yards']):,}" if p["yards"] == p["yards"] else "—",
+                    get_rank_label(classement_qb, player_id, "yards"))
+        col4.metric("TD / INT", f"{int(p['td'])} / {int(p['interceptions'])}")
+        st.divider()
+
+    if a_rushing:
+        st.subheader("Rushing")
+        r = rushing.iloc[0]
+        classement_rb = get_rb_full_rankings(season)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Courses", int(r["courses"]))
+        col2.metric("Yards", f"{int(r['yards']):,}" if r["yards"] == r["yards"] else "—",
+                    get_rank_label(classement_rb, player_id, "yards"))
+        col3.metric("TD", int(r["td"]))
+        st.divider()
+
+    if a_receiving:
+        st.subheader("Receiving")
+        rc = receiving.iloc[0]
+        classement_wr = get_wr_full_rankings(season)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Cibles", int(rc["cibles"]))
+        col2.metric("Réceptions", int(rc["receptions"]))
+        col3.metric("Yards", f"{int(rc['yards']):,}" if rc["yards"] == rc["yards"] else "—",
+                    get_rank_label(classement_wr, player_id, "yards"))
+        col4.metric("TD", int(rc["td"]))
+        st.divider()
+
+    if a_defense:
+        st.subheader("Defense")
+        d = defense.iloc[0]
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Tacles (total)", int(d["tacles_totaux"]))
+        col2.metric("Tacles pour perte", int(d["tacles_pour_perte"]))
+        col3.metric("Sacks", f"{d['sacks_totaux']:.1f}")
+        col4.metric("Pressions QB", int(d["pressions_qb"]))
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Interceptions", int(d["interceptions"]))
+        col2.metric("Passes défendues", int(d["passes_defendues"]))
+        col3.metric("Fumbles forcés", int(d["fumbles_forces"]))
+        st.divider()
+
+    if a_defense:
+        st.subheader("Tendance défensive — semaine par semaine")
+        st.caption("Volume (tacles + sacks + interceptions + passes défendues + fumbles forcés).")
+        df_def_trend = get_player_defensive_weekly_trend(player_id, season)
+        fig_def = go.Figure()
+        fig_def.add_trace(go.Bar(
+            x=df_def_trend["week"], y=df_def_trend["volume_defensif"],
+            marker_color=couleur_equipe, name="Volume défensif",
         ))
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
-    fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
-    fig.update_xaxes(dtick=1)
-    st.plotly_chart(fig, use_container_width=True, key=f"epa_trend_{player_id}_{season}")
+        fig_def.update_layout(xaxis_title="Semaine", yaxis_title="Actions défensives", height=400)
+        fig_def.update_xaxes(dtick=1)
+        st.plotly_chart(fig_def, use_container_width=True, key=f"defense_trend_{player_id}_{season}")
 
-# ─── Tendance défensive — semaine par semaine ───
-if a_stats_defensives:
-    st.subheader("Tendance défensive — semaine par semaine")
-    st.caption("Volume (tacles + sacks + interceptions + passes défendues + fumbles forcés) — l'EPA n'est pas attribuable individuellement en défense.")
-    df_def_trend = get_player_defensive_weekly_trend(player_id, season)
-    fig_def = go.Figure()
-    fig_def.add_trace(go.Bar(
-        x=df_def_trend["week"], y=df_def_trend["volume_defensif"],
-        marker_color=couleur_equipe, name="Volume défensif",
-    ))
-    fig_def.update_layout(xaxis_title="Semaine", yaxis_title="Actions défensives", height=400)
-    fig_def.update_xaxes(dtick=1)
-    st.plotly_chart(fig_def, use_container_width=True, key=f"defense_trend_{player_id}_{season}")
+    if not a_passing and not a_rushing and not a_receiving and not a_defense:
+        st.info("Aucune statistique disponible pour ce joueur sur cette saison.")
 
-if not roles_actifs and not a_stats_defensives:
-    st.info("Aucune donnée hebdomadaire disponible.")
+# ═══════════════════════════════════════════════════════════════════════
+# ADVANCED ANALYTICS — EPA, CPOE, air yards, pression. Aucun paiement
+# n'est en place : contenu visible, juste étiqueté comme futur payant.
+# ═══════════════════════════════════════════════════════════════════════
+with onglet_avance:
+    st.caption("⭐ Ces statistiques feront partie de **NFL Analytics Pro** — en accès libre pour l'instant.")
+
+    if a_passing:
+        st.subheader("Passing — EPA & efficacité")
+        p = passing.iloc[0]
+        classement_qb = get_qb_full_rankings(season)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("EPA/Dropback", f"{p['epa_per_play']:.3f}",
+                    get_rank_label(classement_qb, player_id, "epa_per_play"))
+        col2.metric("CPOE", f"{p['cpoe']:+.1f}%" if p["cpoe"] == p["cpoe"] else "—",
+                    get_rank_label(classement_qb, player_id, "cpoe"))
+        col3.metric("Air Yards Moy.", f"{p['air_yards_moy']:.1f}" if p["air_yards_moy"] == p["air_yards_moy"] else "—")
+
+        pression = get_player_pressure_season(player_id, season)
+        if not pression.empty:
+            pr = pression.iloc[0]
+            st.write("**Pression subie**")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Dropbacks pressés", f"{pr['pressions_subies']:.0f}" if pr["pressions_subies"] == pr["pressions_subies"] else "—")
+            col2.metric("Taux de pression", f"{pr['taux_pression']:.1%}" if pr["taux_pression"] == pr["taux_pression"] else "—")
+            col3.metric("Sacks subis", f"{pr['sacks_subis']:.0f}" if pr["sacks_subis"] == pr["sacks_subis"] else "—")
+        st.divider()
+
+    if a_rushing:
+        st.subheader("Rushing — EPA")
+        r = rushing.iloc[0]
+        classement_rb = get_rb_full_rankings(season)
+        st.metric("EPA/Course", f"{r['epa_per_play']:.3f}",
+                  get_rank_label(classement_rb, player_id, "epa_per_play"))
+        st.divider()
+
+    if a_receiving:
+        st.subheader("Receiving — EPA & profil de réception")
+        rc = receiving.iloc[0]
+        classement_wr = get_wr_full_rankings(season)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("EPA/Cible", f"{rc['epa_per_play']:.3f}",
+                    get_rank_label(classement_wr, player_id, "epa_per_play"))
+        col2.metric("Air Yards Moy.", f"{rc['air_yards_moy']:.1f}" if rc["air_yards_moy"] == rc["air_yards_moy"] else "—")
+        col3.metric("YAC Moy.", f"{rc['yac_moy']:.1f}" if rc["yac_moy"] == rc["yac_moy"] else "—")
+        st.divider()
+
+    if roles_actifs:
+        st.subheader("Tendance EPA — semaine par semaine")
+        fig = go.Figure()
+        styles = [dict(width=3), dict(width=2, dash="dot"), dict(width=2, dash="dash")]
+        for (role, label), style in zip(roles_actifs, styles):
+            df_trend = get_player_weekly_trend(player_id, season, role)
+            fig.add_trace(go.Scatter(
+                x=df_trend["week"], y=df_trend["epa_per_play"], mode="lines+markers",
+                name=label, line=dict(color=couleur_equipe, **style),
+            ))
+        fig.add_hline(y=0, line_dash="dash", line_color="gray")
+        fig.update_layout(xaxis_title="Semaine", yaxis_title="EPA par play", height=400)
+        fig.update_xaxes(dtick=1)
+        st.plotly_chart(fig, use_container_width=True, key=f"epa_trend_{player_id}_{season}")
+    else:
+        st.info("Aucune donnée EPA hebdomadaire disponible.")
