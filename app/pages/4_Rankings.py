@@ -28,8 +28,6 @@ onglet_semaine, onglet_saison = st.tabs(["Cette semaine", "Cette saison"])
 with onglet_semaine:
     weeks = get_weeks_for_season(selected_season)
     week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="rank_week_week")
-    weeks = get_weeks_for_season(selected_season)
-    week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="rank_week_week")
 
     st.divider()
     col1, col2, col3 = st.columns(3)
