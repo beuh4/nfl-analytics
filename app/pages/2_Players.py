@@ -12,15 +12,11 @@ from queries import (
     get_qb_full_rankings, get_rb_full_rankings, get_wr_full_rankings, get_rank_label,
     get_player_defensive_season, get_player_defensive_weekly_trend,
 )
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="Players", layout="wide")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 
 st.title("Players")
 

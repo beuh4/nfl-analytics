@@ -17,6 +17,5 @@ FIRST_SEASON = 2015
 CURRENT_SEASON = 2025
 
 # Équipe pré-sélectionnée sur la page Teams quand aucune n'est indiquée
-# dans l'URL (?team=...) — premier de la liste alphabétique des équipes
-# actives (Arizona Cardinals).
-DEFAULT_TEAM = "MIA"
+# dans l'URL (?team=...).
+DEFAULT_TEAM = "MIA"  # Miami Dolphins

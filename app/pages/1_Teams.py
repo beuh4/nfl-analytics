@@ -4,24 +4,20 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import (
-    get_all_teams, get_available_seasons, get_seasons_for_team, get_team_colors, get_team_logos,
+    get_all_teams, get_seasons_for_team, get_team_colors, get_team_logos,
     get_team_epa_offense_defense, get_team_epa_by_week, get_all_teams_records, get_team_schedule,
     get_team_qb_leaders, get_team_rb_leaders, get_team_wr_leaders, get_team_defensive_summary,
     get_team_qb_leaders_yards, get_team_rb_leaders_yards, get_team_wr_leaders_yards,
     get_all_teams_defensive_summary, get_team_rank_label,
-    style_dataframe, render_table, render_podium, couleur_texte_contraste,
+    render_podium,
 )
 from constants import DEFAULT_TEAM
+from styles import PAGE_FONT_CSS
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Teams", layout="wide")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 
 teams_df = get_all_teams()
 team_name_to_abbr = dict(zip(teams_df["team_name"], teams_df["team_abbr"]))

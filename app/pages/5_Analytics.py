@@ -5,17 +5,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import get_team_epa_offense_defense, get_available_seasons, get_team_logos, style_dataframe, render_table
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="NFL Power Tiers", layout="wide")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
-html, body, [class*="css"] {
-    font-family: 'Manrope', sans-serif;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 
 st.title("NFL Power Tiers")
 st.caption("Qui domine vraiment la ligue — attaque, défense, ou les deux.")

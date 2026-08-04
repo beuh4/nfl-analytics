@@ -13,8 +13,10 @@ from queries import (
     get_team_weekly_movement, get_player_weekly_movement, render_ranking_with_movement,
     get_top_wr_season_epa, get_team_epa_offense_defense,
 )
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="Rankings", layout="wide")
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 st.title("Rankings")
 
 # Sidebar avec filtre par saison global
@@ -93,15 +95,18 @@ with onglet_semaine:
         render_ranking_with_movement(get_team_weekly_movement(selected_season, week), value_col="epa_offense")
     with col2:
         st.write("**QB — EPA/Dropback**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "passing"), value_col="epa_per_play", is_player=True)
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "passing"), value_col="epa_per_play", is_player=True)
+
     col3, col4 = st.columns(2)
     with col3:
         st.write("**RB — EPA/Course**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "rushing"), value_col="epa_per_play", is_player=True)    
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "rushing"), value_col="epa_per_play", is_player=True)
     with col4:
         st.write("**Receveurs — EPA/Cible**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "receiving"), value_col="epa_per_play", is_player=True)
+        render_ranking_with_movement(get_player_weekly_movement(season, week, "receiving"), value_col="epa_per_play", is_player=True)
+
 with onglet_saison:
+    season = selected_season
     st.caption("Pour la saison en cours, les statistiques reflètent uniquement les semaines déjà jouées.")
 
     st.divider()

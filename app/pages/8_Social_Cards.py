@@ -6,8 +6,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from queries import (
     get_available_seasons, get_weeks_for_season, get_all_teams, get_team_colors, get_team_logos,
-    get_team_epa_offense_defense, get_team_weekly_movement,
-    get_player_weekly_movement, get_player_bio, get_player_season_epa,
+    get_team_weekly_movement,
+    get_player_weekly_movement, get_player_bio,
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_top_rb_season_epa, get_top_wr_season_epa,
     get_top_teams_offense_yards_season,
@@ -16,8 +16,10 @@ from queries import (
     get_social_best_offense_week, get_social_best_defense_week,
 )
 from social_cards import generer_carte_joueur, generer_carte_equipe, generer_podium_image, _formatter_valeur
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="Social Cards", layout="wide")
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 st.title("Générateur de visuels — Instagram")
 st.caption("Génère un visuel carré (1080×1080), avec rang et évolution vs semaine précédente.")
 

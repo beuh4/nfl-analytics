@@ -1,6 +1,12 @@
 import streamlit as st
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="About", layout="wide")
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 st.title("About")
 
 st.write("""

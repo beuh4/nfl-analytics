@@ -10,15 +10,11 @@ from queries import (
     get_game_score_progression, get_game_drives, get_game_top_performer, get_game_play_by_play,
     render_game_performers, traduire_surface, style_dataframe, render_table,
 )
+from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="Games", layout="wide")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 
 st.title("Games")
 
