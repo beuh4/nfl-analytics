@@ -97,7 +97,8 @@ with onglet_semaine:
     col3, col4 = st.columns(2)
     with col3:
         st.write("**RB — EPA/Course**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "rushing"), value_col="epa_per_play", is_player=True)    with col4:
+        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "rushing"), value_col="epa_per_play", is_player=True)    
+    with col4:
         st.write("**Receveurs — EPA/Cible**")
         render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "receiving"), value_col="epa_per_play", is_player=True)
 with onglet_saison:
