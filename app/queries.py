@@ -1834,17 +1834,22 @@ def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
 # ──────────────────────────────────────────────────────────────────────────────
 # LIENS CLIQUABLES — équipe / joueur / match vers leur page dédiée
 # ──────────────────────────────────────────────────────────────────────────────
-# target="_top" : sans effet ici puisque tout le HTML cliquable passe par
-# st.markdown (pas d'iframe) — voir la note ci-dessous sur pourquoi st.iframe
-# a été abandonné pour ces rendus. Conservé pour ne rien casser si un de ces
-# fragments est un jour réutilisé dans un contexte st.iframe.
+
+# ATTR_ANTI_INTERCEPTION : le clic droit ("ouvrir dans un nouvel onglet") et le
+# tactile mobile fonctionnaient déjà — seul le clic gauche souris était mort.
+# Signature typique d'un gestionnaire JS ancêtre (le routeur React interne de
+# Streamlit, qui écoute les clics pour gérer sa propre navigation entre pages)
+# qui intercepte l'événement avant qu'il n'atteigne le lien et ne le reconnaît
+# pas. stopPropagation() sur le lien lui-même empêche l'événement de remonter
+# jusqu'à ce gestionnaire, sans empêcher la navigation par défaut du navigateur.
+_ATTR_ANTI_INTERCEPTION = 'onmousedown="event.stopPropagation();" onclick="event.stopPropagation();"'
 
 def _lien_equipe(contenu_html, abbr):
     """Enrobe un fragment HTML d'un lien vers la fiche équipe (Teams)."""
     if not abbr or (isinstance(abbr, float) and abbr != abbr):
         return contenu_html
     return (
-        f'<a href="Teams?team={abbr}" target="_top" '
+        f'<a href="Teams?team={abbr}" {_ATTR_ANTI_INTERCEPTION} '
         f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
     )
 
@@ -1858,7 +1863,7 @@ def _lien_joueur(contenu_html, player_id, season=None):
     href = f"Players?player={player_id}"
     if season:
         href += f"&season={season}"
-    return f'<a href="{href}" target="_top" style="text-decoration:none;color:inherit;">{contenu_html}</a>'
+    return f'<a href="{href}" {_ATTR_ANTI_INTERCEPTION} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_match(contenu_html, game_id):
     """Enrobe un fragment HTML d'un lien vers la fiche match (Games).
@@ -1868,7 +1873,7 @@ def _lien_match(contenu_html, game_id):
     if not game_id or (isinstance(game_id, float) and game_id != game_id):
         return contenu_html
     return (
-        f'<a href="Games?game={game_id}" target="_top" '
+        f'<a href="Games?game={game_id}" {_ATTR_ANTI_INTERCEPTION} '
         f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
     )
 
