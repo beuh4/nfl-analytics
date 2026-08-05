@@ -1835,23 +1835,28 @@ def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
 # LIENS CLIQUABLES — équipe / joueur / match vers leur page dédiée
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ATTR_ANTI_INTERCEPTION : le clic droit ("ouvrir dans un nouvel onglet") et le
-# tactile mobile fonctionnaient déjà — seul le clic gauche souris était mort.
-# Signature typique d'un gestionnaire JS ancêtre (le routeur React interne de
-# Streamlit, qui écoute les clics pour gérer sa propre navigation entre pages)
-# qui intercepte l'événement avant qu'il n'atteigne le lien et ne le reconnaît
-# pas. stopPropagation() sur le lien lui-même empêche l'événement de remonter
-# jusqu'à ce gestionnaire, sans empêcher la navigation par défaut du navigateur.
-_ATTR_ANTI_INTERCEPTION = 'onmousedown="event.stopPropagation();" onclick="event.stopPropagation();"'
+# _attrs_lien : stopPropagation empêche le routeur interne de Streamlit
+# (React) d'intercepter le clic gauche avant qu'il n'atteigne le lien —
+# c'était le premier problème (clic droit fonctionnait, clic gauche non).
+# preventDefault + window.location.href pilotent ensuite la navigation
+# nous-mêmes plutôt que de laisser le comportement par défaut du navigateur
+# décider — c'était le deuxième problème (le clic gauche finissait par
+# ouvrir un nouvel onglet plutôt que de naviguer dans le même). Le clic
+# droit ("ouvrir dans un nouvel onglet") continue de fonctionner normalement
+# puisqu'il n'utilise pas ce onclick.
+def _attrs_lien(href):
+    return (
+        f'href="{href}" '
+        f'onmousedown="event.stopPropagation();" '
+        f"onclick=\"event.stopPropagation();event.preventDefault();window.location.href='{href}';\""
+    )
 
 def _lien_equipe(contenu_html, abbr):
     """Enrobe un fragment HTML d'un lien vers la fiche équipe (Teams)."""
     if not abbr or (isinstance(abbr, float) and abbr != abbr):
         return contenu_html
-    return (
-        f'<a href="Teams?team={abbr}" {_ATTR_ANTI_INTERCEPTION} '
-        f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
-    )
+    href = f"Teams?team={abbr}"
+    return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_joueur(contenu_html, player_id, season=None):
     """Enrobe un fragment HTML d'un lien vers la fiche joueur (Players).
@@ -1863,7 +1868,7 @@ def _lien_joueur(contenu_html, player_id, season=None):
     href = f"Players?player={player_id}"
     if season:
         href += f"&season={season}"
-    return f'<a href="{href}" {_ATTR_ANTI_INTERCEPTION} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
+    return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_match(contenu_html, game_id):
     """Enrobe un fragment HTML d'un lien vers la fiche match (Games).
@@ -1872,10 +1877,8 @@ def _lien_match(contenu_html, game_id):
     présélectionner sans paramètre supplémentaire."""
     if not game_id or (isinstance(game_id, float) and game_id != game_id):
         return contenu_html
-    return (
-        f'<a href="Games?game={game_id}" {_ATTR_ANTI_INTERCEPTION} '
-        f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
-    )
+    href = f"Games?game={game_id}"
+    return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _aplatir_html(html):
     """Aplatit un fragment HTML multi-lignes en une seule ligne avant de
