@@ -1833,10 +1833,10 @@ def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
 # ──────────────────────────────────────────────────────────────────────────────
 # LIENS CLIQUABLES — équipe / joueur / match vers leur page dédiée
 # ──────────────────────────────────────────────────────────────────────────────
-# target="_top" : nécessaire quand le HTML est affiché via st.iframe (contexte
-# de sous-document isolé) pour que le clic navigue la page entière plutôt que
-# de rester coincé dans l'iframe. Sans effet — donc inoffensif — quand le HTML
-# est affiché via st.markdown (pas d'iframe).
+# target="_top" : sans effet ici puisque tout le HTML cliquable passe par
+# st.markdown (pas d'iframe) — voir la note ci-dessous sur pourquoi st.iframe
+# a été abandonné pour ces rendus. Conservé pour ne rien casser si un de ces
+# fragments est un jour réutilisé dans un contexte st.iframe.
 
 def _lien_equipe(contenu_html, abbr):
     """Enrobe un fragment HTML d'un lien vers la fiche équipe (Teams)."""
@@ -2012,11 +2012,11 @@ def render_podium(df, metric_col, decimals=3, season=None):
     season : saison à laquelle appartiennent ces données, transmise au lien
     joueur pour que la page Players se présélectionne sur la bonne saison.
 
-    Rendu via st.iframe (composant isolé, sans partage de style avec la page)
-    pour éviter le scintillement
-    du diffing React de st.markdown sur du HTML complexe. L'iframe n'hérite
-    d'aucun style de la page parente : police et fond sont donc définis
-    explicitement ci-dessous.
+    Rendu via st.markdown (et non st.iframe) : les liens vers Teams/Players
+    nécessitent de sortir du cadre principal, ce que le sandbox par défaut
+    de st.iframe interdit (pas de allow-top-navigation). st.markdown place
+    ce HTML directement dans la page, donc les liens fonctionnent et la
+    police est héritée de PAGE_FONT_CSS sans avoir à la réimporter ici.
     """
     if df.empty:
         st.info("Aucune donnée disponible.")
@@ -2085,27 +2085,11 @@ def render_podium(df, metric_col, decimals=3, season=None):
         </div>
         """
 
-    html = f"""
-    <html>
-    <head>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-            html, body {{
-                margin: 0;
-                padding: 0;
-                background: transparent;
-                font-family: 'Manrope', 'Segoe UI', sans-serif;
-            }}
-        </style>
-    </head>
-    <body>
-        <div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">
-            {blocs}
-        </div>
-    </body>
-    </html>
-    """
-    st.iframe(html, height=320)
+    st.markdown(
+        f'<div style="display:flex;align-items:flex-end;justify-content:center;'
+        f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_team_podium(df, metric_col, decimals=0):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
@@ -2169,27 +2153,11 @@ def render_team_podium(df, metric_col, decimals=0):
         </div>
         """
 
-    html = f"""
-    <html>
-    <head>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-            html, body {{
-                margin: 0;
-                padding: 0;
-                background: transparent;
-                font-family: 'Manrope', 'Segoe UI', sans-serif;
-            }}
-        </style>
-    </head>
-    <body>
-        <div style="display:flex;align-items:flex-end;justify-content:center;padding:20px 0;">
-            {blocs}
-        </div>
-    </body>
-    </html>
-    """
-    st.iframe(html, height=320)
+    st.markdown(
+        f'<div style="display:flex;align-items:flex-end;justify-content:center;'
+        f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
     """Affiche un classement d'équipes sous forme de liste HTML compacte (logo, valeur), utilisé sur Home."""
@@ -2216,15 +2184,11 @@ def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
         </div>
         """
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(60 * len(df) + 20, 360))
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_top_players_list(df):
     """Affiche un classement de joueurs sous forme de liste HTML compacte (photo, poste, yards), utilisé sur Home."""
@@ -2272,15 +2236,11 @@ def render_top_players_list(df):
         </div>
         """
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(58 * len(df) + 20, 340))
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_recent_games_list(df):
     """Affiche les derniers matchs sous forme de liste HTML compacte (logos, score), utilisé sur Home."""
@@ -2313,15 +2273,11 @@ def render_recent_games_list(df):
         """
         rows_html += _lien_match(contenu_ligne, game_id)
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(58 * len(df) + 20, 340))	
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_game_performers(performers: list, couleur_equipe: str, season=None):
     """performers : liste de (label_role, dataframe) pour une équipe.
@@ -2374,15 +2330,11 @@ def render_game_performers(performers: list, couleur_equipe: str, season=None):
     if not rows_html:
         rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=190)
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, season=None):
     """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
@@ -2433,15 +2385,11 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, sea
         </div>
         """
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(46 * len(df.head(10)) + 20, 480))
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 def render_insight_leaders(entries):
     """Affiche une liste "qui domine sur quoi" : une ligne par métrique,
@@ -2492,12 +2440,8 @@ def render_insight_leaders(entries):
         </div>
         """
 
-    html = f"""
-    <html><head><style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Mono:wght@700&display=swap');
-    html,body {{ margin:0; padding:0; background:transparent; font-family:'Manrope',sans-serif; }}
-    </style></head><body>
-    <div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">{rows_html}</div>
-    </body></html>
-    """
-    st.iframe(html, height=min(52 * len(entries) + 20, 320))
+    st.markdown(
+        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        unsafe_allow_html=True,
+    )
