@@ -31,6 +31,7 @@ Convention de nommage :
 
 import duckdb
 import pandas as pd
+import re
 import streamlit as st
 from pathlib import Path
 
@@ -1871,6 +1872,21 @@ def _lien_match(contenu_html, game_id):
         f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
     )
 
+def _aplatir_html(html):
+    """Aplatit un fragment HTML multi-lignes en une seule ligne avant de
+    l'envoyer à st.markdown(unsafe_allow_html=True).
+
+    st.markdown passe d'abord par un parseur Markdown avant d'injecter le
+    HTML. Dès qu'une ligne vide apparaît dans le fragment (systématique
+    quand on concatène plusieurs blocs f-string en boucle avec +=) suivie
+    d'une ligne indentée de 4 espaces ou plus (l'indentation naturelle du
+    code Python), Markdown considère cette ligne vide comme la fin du bloc
+    HTML en cours et traite la ligne suivante comme un bloc de code indenté
+    — affiché en texte brut au lieu d'être rendu comme du HTML. Aplatir en
+    une seule ligne élimine à la fois les lignes vides et l'indentation,
+    donc le problème à la racine."""
+    return re.sub(r"\s+", " ", html).strip()
+
 # Traduction des noms de colonnes techniques vers un affichage lisible en
 # français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
 
@@ -2002,7 +2018,7 @@ def render_table(styled_df):
     respecte que les couleurs cellule par cellule. Contrepartie : pas de
     tri interactif au clic sur une colonne."""
     html = styled_df.to_html()
-    st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
+    st.markdown(_aplatir_html(f'<div style="overflow-x:auto;">{html}</div>'), unsafe_allow_html=True)
 
 def render_podium(df, metric_col, decimals=3, season=None):
     """Podium HTML pour un top 3 de joueurs : 1er au centre (plus haut), 2e à
@@ -2086,8 +2102,10 @@ def render_podium(df, metric_col, decimals=3, season=None):
         """
 
     st.markdown(
-        f'<div style="display:flex;align-items:flex-end;justify-content:center;'
-        f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>',
+        _aplatir_html(
+            f'<div style="display:flex;align-items:flex-end;justify-content:center;'
+            f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2154,8 +2172,10 @@ def render_team_podium(df, metric_col, decimals=0):
         """
 
     st.markdown(
-        f'<div style="display:flex;align-items:flex-end;justify-content:center;'
-        f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>',
+        _aplatir_html(
+            f'<div style="display:flex;align-items:flex-end;justify-content:center;'
+            f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2185,8 +2205,10 @@ def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
         """
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2237,8 +2259,10 @@ def render_top_players_list(df):
         """
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2274,8 +2298,10 @@ def render_recent_games_list(df):
         rows_html += _lien_match(contenu_ligne, game_id)
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2331,8 +2357,10 @@ def render_game_performers(performers: list, couleur_equipe: str, season=None):
         rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2386,8 +2414,10 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, sea
         """
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
@@ -2441,7 +2471,9 @@ def render_insight_leaders(entries):
         """
 
     st.markdown(
-        f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-        f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>',
+        _aplatir_html(
+            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
+            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
+        ),
         unsafe_allow_html=True,
     )
