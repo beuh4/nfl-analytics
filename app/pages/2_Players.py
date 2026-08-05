@@ -21,7 +21,15 @@ st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 st.title("Players")
 
 seasons = get_available_seasons()
-season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="player_season")
+
+# Un lien entrant (?player=...&season=...) doit présélectionner la bonne
+# saison : sans ça, un joueur absent de la saison affichée par défaut
+# (la plus récente) ne serait pas retrouvé plus bas et le filtre retomberait
+# silencieusement sur le premier joueur de la liste.
+season_cible = st.query_params.get("season")
+season_cible = int(season_cible) if season_cible and season_cible.isdigit() else None
+index_season = seasons.index(season_cible) if season_cible in seasons else len(seasons) - 1
+season = st.selectbox("Saison", seasons, index=index_season, key="player_season")
 
 joueurs = get_player_search_list(season)
 

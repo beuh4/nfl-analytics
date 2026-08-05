@@ -19,10 +19,25 @@ st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
 st.title("Games")
 
 seasons = get_available_seasons()
-season = st.selectbox("Saison", seasons, index=len(seasons) - 1, key="game_season")
+
+# Un lien entrant (?game=...) encode saison et semaine dans le game_id
+# (convention nflverse "saison_semaine_visiteur_domicile"). Sans ça, les
+# selectbox Saison/Semaine restent sur leur valeur par défaut (dernière
+# saison/semaine) et le match ciblé, absent de cette liste-là, serait
+# ignoré silencieusement plus bas.
+initial_game_id = st.query_params.get("game")
+season_cible, week_cible = None, None
+if initial_game_id:
+    morceaux = initial_game_id.split("_")
+    if len(morceaux) >= 2 and morceaux[0].isdigit() and morceaux[1].isdigit():
+        season_cible, week_cible = int(morceaux[0]), int(morceaux[1])
+
+index_season = seasons.index(season_cible) if season_cible in seasons else len(seasons) - 1
+season = st.selectbox("Saison", seasons, index=index_season, key="game_season")
 
 weeks = get_weeks_for_season(season)
-week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="game_week")
+index_week = weeks.index(week_cible) if week_cible in weeks else len(weeks) - 1
+week = st.selectbox("Semaine", weeks, index=index_week, key="game_week")
 
 games = get_games_for_week(season, week)
 if games.empty:
@@ -35,10 +50,9 @@ options_match = [
     for _, row in games.iterrows()
 ]
 
-initial_id = st.query_params.get("game")
 index_defaut = 0
-if initial_id and initial_id in games["game_id"].values:
-    index_defaut = int(games[games["game_id"] == initial_id].index[0])
+if initial_game_id and initial_game_id in games["game_id"].values:
+    index_defaut = int(games[games["game_id"] == initial_game_id].index[0])
 
 match_choisi = st.selectbox("Match", options_match, index=index_defaut, key="game_select")
 game_id = games.iloc[options_match.index(match_choisi)]["game_id"]
@@ -138,7 +152,7 @@ with onglet_resume:
             qb = get_game_top_performer(game_id, team, season, "passing")
             rb = get_game_top_performer(game_id, team, season, "rushing")
             wr = get_game_top_performer(game_id, team, season, "receiving")
-            render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur)
+            render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur, season=season)
 
     st.divider()
 

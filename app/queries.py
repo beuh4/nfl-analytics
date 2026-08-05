@@ -355,6 +355,7 @@ def get_team_qb_leaders(team: str, season: int, min_dropbacks: int = 20):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -385,6 +386,7 @@ def get_team_rb_leaders(team: str, season: int, min_carries: int = 10):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.rusher_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -404,6 +406,7 @@ def get_team_wr_leaders(team: str, season: int, min_targets: int = 10):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.receiver_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -423,6 +426,7 @@ def get_team_qb_leaders_yards(team: str, season: int, min_dropbacks: int = 20):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -442,6 +446,7 @@ def get_team_rb_leaders_yards(team: str, season: int, min_carries: int = 10):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.rusher_player_id) AS player_id,
                SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -461,6 +466,7 @@ def get_team_wr_leaders_yards(team: str, season: int, min_targets: int = 10):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.receiver_player_id) AS player_id,
                SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1085,7 +1091,8 @@ def get_game_top_performer(game_id: str, team: str, season: int, role: str):
     }
     nom_col, id_col, yards_col, filtre, poste_defaut = colonnes[role]
     query = f"""
-        SELECT p.{nom_col} AS player, SUM(p.{yards_col}) AS yards, ROUND(AVG(p.epa), 3) AS epa_per_play,
+        SELECT p.{nom_col} AS player, ANY_VALUE(p.{id_col}) AS player_id,
+               SUM(p.{yards_col}) AS yards, ROUND(AVG(p.epa), 3) AS epa_per_play,
                ANY_VALUE(r.headshot_url) AS photo_url,
                COALESCE(ANY_VALUE(r.position), '{poste_defaut}') AS position
         FROM plays p
@@ -1131,6 +1138,7 @@ def get_top_qb_season_yards(season: int, min_dropbacks: int = 100):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                SUM(p.passing_yards) AS yards, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1150,6 +1158,7 @@ def get_top_rb_season_yards(season: int, min_carries: int = 50):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.rusher_player_id) AS player_id,
                SUM(p.rushing_yards) AS yards, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1169,6 +1178,7 @@ def get_top_wr_season_yards(season: int, min_targets: int = 30):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.receiver_player_id) AS player_id,
                SUM(p.receiving_yards) AS yards, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1208,6 +1218,7 @@ def get_top_qb_season_epa(season: int, min_dropbacks: int = 100):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1227,6 +1238,7 @@ def get_top_rb_season_epa(season: int, min_carries: int = 50):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.rusher_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1246,6 +1258,7 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.receiver_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1270,6 +1283,7 @@ def get_top_qb_week(season: int, week: int, min_dropbacks: int = 10):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS dropbacks,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1289,6 +1303,7 @@ def get_top_rb_week(season: int, week: int, min_carries: int = 5):
     con = get_connection()
     query = """
         SELECT p.rusher_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.rusher_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS carries,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1308,6 +1323,7 @@ def get_top_wr_week(season: int, week: int, min_targets: int = 3):
     con = get_connection()
     query = """
         SELECT p.receiver_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.receiver_player_id) AS player_id,
                ROUND(AVG(p.epa), 3) AS epa_per_play, COUNT(*) AS targets,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1726,7 +1742,7 @@ def get_home_recent_games(season: int, limit: int = 7):
     """Derniers matchs joués de la saison en cours, pour l'aperçu affiché sur la page d'accueil."""
     con = get_connection()
     query = """
-        SELECT week, gameday, home_team, away_team, home_score, away_score
+        SELECT game_id, week, gameday, home_team, away_team, home_score, away_score
         FROM games
         WHERE season = ? AND home_score IS NOT NULL AND away_score IS NOT NULL
         ORDER BY gameday DESC
@@ -1799,6 +1815,7 @@ def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
     con = get_connection()
     query = """
         SELECT p.passer_player_name AS player, p.posteam AS team,
+               ANY_VALUE(p.passer_player_id) AS player_id,
                ROUND(AVG(CAST(p.success AS DOUBLE)), 3) AS success_rate,
                ANY_VALUE(r.headshot_url) AS photo_url
         FROM plays p
@@ -1812,6 +1829,47 @@ def get_season_success_rate_leader(season: int, min_dropbacks: int = 100):
     df = con.execute(query, [season, min_dropbacks]).fetchdf()
     return df
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LIENS CLIQUABLES — équipe / joueur / match vers leur page dédiée
+# ──────────────────────────────────────────────────────────────────────────────
+# target="_top" : nécessaire quand le HTML est affiché via st.iframe (contexte
+# de sous-document isolé) pour que le clic navigue la page entière plutôt que
+# de rester coincé dans l'iframe. Sans effet — donc inoffensif — quand le HTML
+# est affiché via st.markdown (pas d'iframe).
+
+def _lien_equipe(contenu_html, abbr):
+    """Enrobe un fragment HTML d'un lien vers la fiche équipe (Teams)."""
+    if not abbr or (isinstance(abbr, float) and abbr != abbr):
+        return contenu_html
+    return (
+        f'<a href="Teams?team={abbr}" target="_top" '
+        f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
+    )
+
+def _lien_joueur(contenu_html, player_id, season=None):
+    """Enrobe un fragment HTML d'un lien vers la fiche joueur (Players).
+    season est inclus quand disponible pour que la page Players présélectionne
+    la bonne saison (sinon un joueur absent de la saison affichée par défaut
+    ne serait pas retrouvé)."""
+    if not isinstance(player_id, str) or not player_id:
+        return contenu_html
+    href = f"Players?player={player_id}"
+    if season:
+        href += f"&season={season}"
+    return f'<a href="{href}" target="_top" style="text-decoration:none;color:inherit;">{contenu_html}</a>'
+
+def _lien_match(contenu_html, game_id):
+    """Enrobe un fragment HTML d'un lien vers la fiche match (Games).
+    game_id encode déjà saison et semaine (convention nflverse
+    'saison_semaine_visiteur_domicile'), donc la page Games peut s'y
+    présélectionner sans paramètre supplémentaire."""
+    if not game_id or (isinstance(game_id, float) and game_id != game_id):
+        return contenu_html
+    return (
+        f'<a href="Games?game={game_id}" target="_top" '
+        f'style="text-decoration:none;color:inherit;">{contenu_html}</a>'
+    )
 
 # Traduction des noms de colonnes techniques vers un affichage lisible en
 # français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
@@ -1863,7 +1921,7 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
         def _cell_avec_logo(abbr):
             url = logos.get(abbr)
             if url:
-                return (
+                contenu = (
                     f'<span style="white-space:nowrap;">'
                     f'<span style="display:inline-block;background:white;border-radius:50%;'
                     f'padding:2px;margin-right:6px;line-height:0;">'
@@ -1871,21 +1929,29 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
                     f'</span>{abbr}'
                     f'</span>'
                 )
-            return abbr
+            else:
+                contenu = abbr
+            return _lien_equipe(contenu, abbr)
 
         affichage[team_col] = affichage[team_col].apply(_cell_avec_logo)
 
     if player_col and player_col in affichage.columns and "photo_url" in affichage.columns:
+        a_player_id = "player_id" in affichage.columns
+
         def _cell_avec_photo(row):
             url = row["photo_url"]
             nom = row[player_col]
             if isinstance(url, str) and url:
-                return (
+                contenu = (
                     f'<span style="white-space:nowrap;">'
                     f'<img src="{url}" height="28" style="vertical-align:middle;margin-right:6px;border-radius:50%;">{nom}'
                     f'</span>'
                 )
-            return nom
+            else:
+                contenu = nom
+            if a_player_id:
+                return _lien_joueur(contenu, row.get("player_id"))
+            return contenu
 
         affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
         affichage = affichage.drop(columns=["photo_url"])
@@ -1938,10 +2004,13 @@ def render_table(styled_df):
     html = styled_df.to_html()
     st.markdown(f'<div style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
 
-def render_podium(df, metric_col, decimals=3):
+def render_podium(df, metric_col, decimals=3, season=None):
     """Podium HTML pour un top 3 de joueurs : 1er au centre (plus haut), 2e à
     gauche, 3e à droite. Utilise photo_url si présente dans df, sinon un avatar
     avec les initiales du joueur, coloré aux couleurs de l'équipe.
+
+    season : saison à laquelle appartiennent ces données, transmise au lien
+    joueur pour que la page Players se présélectionne sur la bonne saison.
 
     Rendu via st.iframe (composant isolé, sans partage de style avec la page)
     pour éviter le scintillement
@@ -1968,6 +2037,7 @@ def render_podium(df, metric_col, decimals=3):
         rang = i + 1
         nom = row.get("player", "")
         team = row.get("team", "")
+        player_id = row.get("player_id") if "player_id" in df.columns else None
         valeur = row.get(metric_col, 0)
         couleur_equipe = colors.get(team, "#374151")
         logo_url = logos.get(team, "")
@@ -1993,14 +2063,21 @@ def render_podium(df, metric_col, decimals=3):
             if logo_url else ""
         )
 
+        avatar_lien = _lien_joueur(avatar, player_id, season)
+        nom_lien = _lien_joueur(
+            f'<div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>',
+            player_id, season,
+        )
+        equipe_lien = _lien_equipe(f'{logo_html}{team}', team)
+
         blocs += f"""
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
             <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
                         display:flex;align-items:center;justify-content:center;color:#1F2937;
                         font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
-            {avatar}
-            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>
-            <div style="font-size:12px;color:#64748B;">{logo_html}{team}</div>
+            {avatar_lien}
+            {nom_lien}
+            <div style="font-size:12px;color:#64748B;">{equipe_lien}</div>
             <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
@@ -2072,13 +2149,19 @@ def render_team_podium(df, metric_col, decimals=0):
                 f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">{team}</div>'
             )
 
+        avatar_lien = _lien_equipe(avatar, team)
+        nom_lien = _lien_equipe(
+            f'<div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{team}</div>',
+            team,
+        )
+
         blocs += f"""
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
             <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
                         display:flex;align-items:center;justify-content:center;color:#1F2937;
                         font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
-            {avatar}
-            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{team}</div>
+            {avatar_lien}
+            {nom_lien}
             <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
@@ -2211,7 +2294,8 @@ def render_recent_games_list(df):
     for _, row in df.iterrows():
         home_logo = logos.get(row["home_team"], "")
         away_logo = logos.get(row["away_team"], "")
-        rows_html += f"""
+        game_id = row.get("game_id") if "game_id" in df.columns else None
+        contenu_ligne = f"""
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
             <div style="font-size:12px;color:#94A3B8;width:40px;">S{int(row['week'])}</div>
             <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
@@ -2227,6 +2311,7 @@ def render_recent_games_list(df):
             </div>
         </div>
         """
+        rows_html += _lien_match(contenu_ligne, game_id)
 
     html = f"""
     <html><head><style>
@@ -2238,8 +2323,10 @@ def render_recent_games_list(df):
     """
     st.iframe(html, height=min(58 * len(df) + 20, 340))	
 
-def render_game_performers(performers: list, couleur_equipe: str):
-    """performers : liste de (label_role, dataframe) pour une équipe."""
+def render_game_performers(performers: list, couleur_equipe: str, season=None):
+    """performers : liste de (label_role, dataframe) pour une équipe.
+    season : transmis au lien joueur pour présélectionner la bonne saison
+    sur la page Players."""
     rows_html = ""
     for label, df in performers:
         if df.empty:
@@ -2247,6 +2334,7 @@ def render_game_performers(performers: list, couleur_equipe: str):
         row = df.iloc[0]
         photo = row.get("photo_url")
         nom = row["player"]
+        player_id = row.get("player_id") if "player_id" in df.columns else None
         position = row["position"]
         yards = int(row["yards"]) if row["yards"] == row["yards"] else 0
         epa = row["epa_per_play"]
@@ -2263,11 +2351,17 @@ def render_game_performers(performers: list, couleur_equipe: str):
                 f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initiales}</div>'
             )
 
+        avatar = _lien_joueur(avatar, player_id, season)
+        bloc_nom = _lien_joueur(
+            f'<div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>',
+            player_id, season,
+        )
+
         rows_html += f"""
         <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #E2E8F0;">
             {avatar}
             <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>
+                {bloc_nom}
                 <div style="font-size:11px;color:#64748B;">{position} · {label}</div>
             </div>
             <div style="text-align:right;">
@@ -2290,9 +2384,12 @@ def render_game_performers(performers: list, couleur_equipe: str):
     """
     st.iframe(html, height=190)
 
-def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
+def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, season=None):
     """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
-    classé la semaine d'avant (nouveau qualifié ou retour de blessure)."""
+    classé la semaine d'avant (nouveau qualifié ou retour de blessure).
+
+    season : transmis au lien joueur (quand is_player=True) pour que la page
+    Players se présélectionne sur la bonne saison."""
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
@@ -2319,12 +2416,18 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False):
             badge = '<span style="color:#94A3B8;font-size:12px;">–</span>'
 
         nom_affiche = f"{row['player']} · {team}" if is_player else team
+        logo_lien = _lien_equipe(f'<img src="{logo}" height="20">', team)
+        nom_div = f'<div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>'
+        if is_player:
+            nom_div = _lien_joueur(nom_div, row.get("player_id"), season)
+        else:
+            nom_div = _lien_equipe(nom_div, team)
 
         rows_html += f"""
         <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
             <div style="width:20px;font-weight:800;color:{couleur};font-size:14px;">{rang}</div>
-            <img src="{logo}" height="20">
-            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>
+            {logo_lien}
+            {nom_div}
             <div style="width:44px;text-align:center;">{badge}</div>
             <div style="width:60px;text-align:right;font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:13px;">{valeur:.{decimals}f}</div>
         </div>
@@ -2346,7 +2449,9 @@ def render_insight_leaders(entries):
     seule métrique. Pensé pour un coup d'œil rapide sur la page d'accueil.
 
     entries : liste de dicts {label, name, team (abréviation ou None),
-    value (déjà formaté en string), photo_url (optionnel)}."""
+    value (déjà formaté en string), photo_url (optionnel), player_id
+    (optionnel — présent seulement quand l'entrée désigne un joueur), season
+    (optionnel — saison de l'entrée, pour présélectionner la page Players)}."""
     colors = get_team_colors()
     logos = get_team_logos()
 
@@ -2356,6 +2461,8 @@ def render_insight_leaders(entries):
         couleur = colors.get(team, "#374151") if team else "#374151"
         logo = logos.get(team, "") if team else ""
         photo = e.get("photo_url")
+        player_id = e.get("player_id")
+        season = e.get("season")
 
         if isinstance(photo, str) and photo:
             avatar = (
@@ -2368,11 +2475,19 @@ def render_insight_leaders(entries):
             avatar = '<div style="width:30px;flex-shrink:0;"></div>'
 
         nom = e.get("name") or "—"
+        nom_div = f'<div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>'
+        if player_id:
+            avatar = _lien_joueur(avatar, player_id, season)
+            nom_div = _lien_joueur(nom_div, player_id, season)
+        elif team:
+            avatar = _lien_equipe(avatar, team)
+            nom_div = _lien_equipe(nom_div, team)
+
         rows_html += f"""
         <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
             <div style="width:100px;flex-shrink:0;font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.04em;">{e['label']}</div>
             {avatar}
-            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
+            {nom_div}
             <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;flex-shrink:0;">{e['value']}</div>
         </div>
         """

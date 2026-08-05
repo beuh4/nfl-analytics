@@ -50,7 +50,7 @@ home_season = get_home_current_season()
 st.caption(f"Données de la saison {home_season}")
 
 
-def _leader_entry(label, df, name_col, team_col, value_col, value_fmt, photo=True):
+def _leader_entry(label, df, name_col, team_col, value_col, value_fmt, photo=True, season=None):
     """Construit une entrée pour render_insight_leaders à partir de la
     première ligne d'un DataFrame déjà trié — gère le cas où aucun joueur
     n'atteint encore le seuil qualifiant (ex. tout début de saison)."""
@@ -63,6 +63,8 @@ def _leader_entry(label, df, name_col, team_col, value_col, value_fmt, photo=Tru
         "team": row[team_col],
         "value": value_fmt(row[value_col]),
         "photo_url": row.get("photo_url") if photo else None,
+        "player_id": row.get("player_id") if "player_id" in df.columns else None,
+        "season": season,
     }
 
 
@@ -71,16 +73,16 @@ df_off_epa_sorted = df_epa_ligue.sort_values("epa_offense", ascending=False)
 df_def_epa_sorted = df_epa_ligue.sort_values("epa_defense", ascending=True)
 
 league_leaders = [
-    _leader_entry("Passing Yds", get_top_qb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
-    _leader_entry("Rushing Yds", get_top_rb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
-    _leader_entry("Receiving Yds", get_top_wr_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}"),
-    _leader_entry("Sacks", get_season_sacks_leader(home_season), "player", "team", "sacks", lambda v: f"{v:.1f}"),
-    _leader_entry("Interceptions", get_season_interceptions_leader(home_season), "player", "team", "interceptions", lambda v: f"{int(v)}"),
+    _leader_entry("Passing Yds", get_top_qb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}", season=home_season),
+    _leader_entry("Rushing Yds", get_top_rb_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}", season=home_season),
+    _leader_entry("Receiving Yds", get_top_wr_season_yards(home_season), "player", "team", "yards", lambda v: f"{int(v):,}", season=home_season),
+    _leader_entry("Sacks", get_season_sacks_leader(home_season), "player", "team", "sacks", lambda v: f"{v:.1f}", season=home_season),
+    _leader_entry("Interceptions", get_season_interceptions_leader(home_season), "player", "team", "interceptions", lambda v: f"{int(v)}", season=home_season),
 ]
 
 analytics_leaders = [
-    _leader_entry("EPA/Play", get_top_qb_season_epa(home_season), "player", "team", "epa_per_play", lambda v: f"{v:.3f}"),
-    _leader_entry("Success Rate", get_season_success_rate_leader(home_season), "player", "team", "success_rate", lambda v: f"{v:.1%}"),
+    _leader_entry("EPA/Play", get_top_qb_season_epa(home_season), "player", "team", "epa_per_play", lambda v: f"{v:.3f}", season=home_season),
+    _leader_entry("Success Rate", get_season_success_rate_leader(home_season), "player", "team", "success_rate", lambda v: f"{v:.1%}", season=home_season),
     {
         "label": "Offensive EPA",
         "name": df_off_epa_sorted.iloc[0]["team_name"] if not df_off_epa_sorted.empty else "—",

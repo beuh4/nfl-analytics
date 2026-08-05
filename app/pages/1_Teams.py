@@ -121,13 +121,13 @@ with onglet_overview:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.write("Quarterback — Yards lancés")
-        render_podium(get_team_qb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+        render_podium(get_team_qb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
     with col2:
         st.write("Running Back — Yards parcourus")
-        render_podium(get_team_rb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+        render_podium(get_team_rb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
     with col3:
         st.write("Receveur — Yards attrapés")
-        render_podium(get_team_wr_leaders_yards(team_abbr, season), metric_col="yards", decimals=0)
+        render_podium(get_team_wr_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
 
     st.divider()
 
@@ -194,13 +194,13 @@ with onglet_avance:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.write("Quarterback — EPA/dropback")
-        render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play")
+        render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
     with col2:
         st.write("Running Back — EPA/course")
-        render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play")
+        render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
     with col3:
         st.write("Receveur — EPA/cible")
-        render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play")
+        render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
 
     st.divider()
 
