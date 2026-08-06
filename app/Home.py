@@ -101,17 +101,17 @@ col_league, col_analytics, col_games = st.columns(3)
 
 with col_league:
     st.write("**League Leaders**")
-    render_insight_leaders(league_leaders, prefixe_cle="home_league")
+    render_insight_leaders(league_leaders)
     st.page_link("pages/4_Rankings.py", label="Voir tous les classements", icon="🏆")
 
 with col_analytics:
     st.write("**Analytics Leaders** ⭐")
-    render_insight_leaders(analytics_leaders, prefixe_cle="home_analytics")
+    render_insight_leaders(analytics_leaders)
     st.page_link("pages/5_Analytics.py", label="Explorer les analytics", icon="📊")
 
 with col_games:
     st.write("**Derniers matchs**")
-    render_recent_games_list(get_home_recent_games(home_season), prefixe_cle="home_recents")
+    render_recent_games_list(get_home_recent_games(home_season))
     st.page_link("pages/1_Teams.py", label="Explorer les équipes", icon="🏈")
 
 st.divider()

@@ -152,7 +152,7 @@ with onglet_resume:
             qb = get_game_top_performer(game_id, team, season, "passing")
             rb = get_game_top_performer(game_id, team, season, "rushing")
             wr = get_game_top_performer(game_id, team, season, "receiving")
-            render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur, season=season, prefixe_cle=f"game_perf_{team}")
+            render_game_performers([("Passing", qb), ("Rushing", rb), ("Receiving", wr)], couleur, season=season)
 
     st.divider()
 

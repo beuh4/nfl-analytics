@@ -31,16 +31,17 @@ with onglet_semaine:
     weeks = get_weeks_for_season(selected_season)
     week = st.selectbox("Semaine", weeks, index=len(weeks) - 1, key="rank_week_week")
 
-    # Podiums empilés en pleine largeur : render_podium utilise st.columns()
-    # en interne pour son propre 1er/2e/3e — les imbriquer dans les st.columns
-    # d'avant les rendait trop étroits pour afficher photo + nom correctement.
     st.divider()
-    st.subheader("Top 3 QB — EPA/dropback")
-    render_podium(get_top_qb_week(selected_season, week), metric_col="epa_per_play", season=selected_season, prefixe_cle="rank_sem_qb")
-    st.subheader("Top 3 RB — EPA/course")
-    render_podium(get_top_rb_week(selected_season, week), metric_col="epa_per_play", season=selected_season, prefixe_cle="rank_sem_rb")
-    st.subheader("Top 3 Receveurs — EPA/cible")
-    render_podium(get_top_wr_week(selected_season, week), metric_col="epa_per_play", season=selected_season, prefixe_cle="rank_sem_wr")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("Top 3 QB — EPA/dropback")
+        render_podium(get_top_qb_week(selected_season, week), metric_col="epa_per_play", season=selected_season)
+    with col2:
+        st.subheader("Top 3 RB — EPA/course")
+        render_podium(get_top_rb_week(selected_season, week), metric_col="epa_per_play", season=selected_season)
+    with col3:
+        st.subheader("Top 3 Receveurs — EPA/cible")
+        render_podium(get_top_wr_week(selected_season, week), metric_col="epa_per_play", season=selected_season)
 
     st.divider()
     col1, col2 = st.columns(2)
@@ -91,17 +92,17 @@ with onglet_semaine:
     col1, col2 = st.columns(2)
     with col1:
         st.write("**Équipes — EPA Offensif**")
-        render_ranking_with_movement(get_team_weekly_movement(selected_season, week), value_col="epa_offense", prefixe_cle="rank_sem_mvt_team")
+        render_ranking_with_movement(get_team_weekly_movement(selected_season, week), value_col="epa_offense")
     with col2:
         st.write("**QB — EPA/Dropback**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "passing"), value_col="epa_per_play", is_player=True, season=selected_season, prefixe_cle="rank_sem_mvt_qb")
+        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "passing"), value_col="epa_per_play", is_player=True, season=selected_season)
     col3, col4 = st.columns(2)
     with col3:
         st.write("**RB — EPA/Course**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "rushing"), value_col="epa_per_play", is_player=True, season=selected_season, prefixe_cle="rank_sem_mvt_rb")
+        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "rushing"), value_col="epa_per_play", is_player=True, season=selected_season)
     with col4:
         st.write("**Receveurs — EPA/Cible**")
-        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "receiving"), value_col="epa_per_play", is_player=True, season=selected_season, prefixe_cle="rank_sem_mvt_wr")
+        render_ranking_with_movement(get_player_weekly_movement(selected_season, week, "receiving"), value_col="epa_per_play", is_player=True, season=selected_season)
 
 with onglet_saison:
     season = selected_season
@@ -109,29 +110,40 @@ with onglet_saison:
 
     st.divider()
     st.header("Statistiques brutes — Yards")
-    st.subheader("Top 3 QB — Yards lancés")
-    render_podium(get_top_qb_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season, prefixe_cle="rank_sai_qb_yds")
-    st.subheader("Top 3 RB — Yards parcourus")
-    render_podium(get_top_rb_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season, prefixe_cle="rank_sai_rb_yds")
-    st.subheader("Top 3 Receveurs — Yards attrapés")
-    render_podium(get_top_wr_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season, prefixe_cle="rank_sai_wr_yds")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("Top 3 QB — Yards lancés")
+        render_podium(get_top_qb_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season)
+    with col2:
+        st.subheader("Top 3 RB — Yards parcourus")
+        render_podium(get_top_rb_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season)
+    with col3:
+        st.subheader("Top 3 Receveurs — Yards attrapés")
+        render_podium(get_top_wr_season_yards(selected_season), metric_col="yards", decimals=0, season=selected_season)
 
     st.divider()
     st.subheader("Top 3 Équipes — Yards offensifs totaux")
-    render_team_podium(get_top_teams_offense_yards_season(selected_season), metric_col="yards", decimals=0, prefixe_cle="rank_sai_team_yds")
+    render_team_podium(get_top_teams_offense_yards_season(selected_season), metric_col="yards", decimals=0)
 
     st.divider()
     st.header("Performance EPA")
-    st.subheader("Top 3 QB — EPA/dropback")
-    render_podium(get_top_qb_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season, prefixe_cle="rank_sai_qb_epa")
-    st.subheader("Top 3 RB — EPA/course")
-    render_podium(get_top_rb_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season, prefixe_cle="rank_sai_rb_epa")
-    st.subheader("Top 3 Receveurs — EPA/cible")
-    render_podium(get_top_wr_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season, prefixe_cle="rank_sai_wr_epa")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("Top 3 QB — EPA/dropback")
+        render_podium(get_top_qb_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season)
+    with col2:
+        st.subheader("Top 3 RB — EPA/course")
+        render_podium(get_top_rb_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season)
+    with col3:
+        st.subheader("Top 3 Receveurs — EPA/cible")
+        render_podium(get_top_wr_season_epa(selected_season), metric_col="epa_per_play", decimals=3, season=selected_season)
 
     st.divider()
+    col1, col2 = st.columns(2)
     df_teams_epa = get_team_epa_offense_defense(selected_season)
-    st.subheader("Top 3 Attaques — EPA offensif")
-    render_team_podium(df_teams_epa.nlargest(3, "epa_offense").reset_index(drop=True), metric_col="epa_offense", decimals=3, prefixe_cle="rank_sai_atk_epa")
-    st.subheader("Top 3 Défenses — EPA concédé le plus bas")
-    render_team_podium(df_teams_epa.nsmallest(3, "epa_defense").reset_index(drop=True), metric_col="epa_defense", decimals=3, prefixe_cle="rank_sai_def_epa")
+    with col1:
+        st.subheader("Top 3 Attaques — EPA offensif")
+        render_team_podium(df_teams_epa.nlargest(3, "epa_offense").reset_index(drop=True), metric_col="epa_offense", decimals=3)
+    with col2:
+        st.subheader("Top 3 Défenses — EPA concédé le plus bas")
+        render_team_podium(df_teams_epa.nsmallest(3, "epa_defense").reset_index(drop=True), metric_col="epa_defense", decimals=3)
