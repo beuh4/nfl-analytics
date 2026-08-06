@@ -118,16 +118,12 @@ with onglet_overview:
 
     # ─── Leaders offensifs — Yards (stats "classiques") ───
     st.subheader("Leaders offensifs — Yards")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.write("Quarterback — Yards lancés")
-        render_podium(get_team_qb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
-    with col2:
-        st.write("Running Back — Yards parcourus")
-        render_podium(get_team_rb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
-    with col3:
-        st.write("Receveur — Yards attrapés")
-        render_podium(get_team_wr_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season)
+    st.write("Quarterback — Yards lancés")
+    render_podium(get_team_qb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season, prefixe_cle=f"team_ov_qb_yds_{team_abbr}")
+    st.write("Running Back — Yards parcourus")
+    render_podium(get_team_rb_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season, prefixe_cle=f"team_ov_rb_yds_{team_abbr}")
+    st.write("Receveur — Yards attrapés")
+    render_podium(get_team_wr_leaders_yards(team_abbr, season), metric_col="yards", decimals=0, season=season, prefixe_cle=f"team_ov_wr_yds_{team_abbr}")
 
     st.divider()
 
@@ -191,16 +187,12 @@ with onglet_avance:
 
     # ─── Leaders offensifs — EPA ───
     st.subheader("Leaders offensifs — EPA")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.write("Quarterback — EPA/dropback")
-        render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
-    with col2:
-        st.write("Running Back — EPA/course")
-        render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
-    with col3:
-        st.write("Receveur — EPA/cible")
-        render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play", season=season)
+    st.write("Quarterback — EPA/dropback")
+    render_podium(get_team_qb_leaders(team_abbr, season), metric_col="epa_per_play", season=season, prefixe_cle=f"team_adv_qb_epa_{team_abbr}")
+    st.write("Running Back — EPA/course")
+    render_podium(get_team_rb_leaders(team_abbr, season), metric_col="epa_per_play", season=season, prefixe_cle=f"team_adv_rb_epa_{team_abbr}")
+    st.write("Receveur — EPA/cible")
+    render_podium(get_team_wr_leaders(team_abbr, season), metric_col="epa_per_play", season=season, prefixe_cle=f"team_adv_wr_epa_{team_abbr}")
 
     st.divider()
 

@@ -1895,6 +1895,38 @@ def _aplatir_html(html):
     donc le problème à la racine."""
     return re.sub(r"\s+", " ", html).strip()
 
+def _carte_cliquable(html_visuel, page, query_params, cle):
+    """Rend html_visuel (un fragment de présentation — photo, nom, badges…)
+    et le recouvre entièrement d'un st.button natif rendu invisible par CSS,
+    cliquable sur toute la surface de la carte, qui déclenche st.switch_page
+    au clic.
+
+    Pourquoi pas un simple <a> ? Streamlit force target="_blank" et supprime
+    tout gestionnaire onclick sur les liens injectés via st.markdown/st.html
+    (nettoyage DOMPurify côté frontend, non contournable) — un <a> classique
+    ne peut donc jamais naviguer dans le même onglet. st.switch_page, lui,
+    le peut, mais c'est un appel Python déclenché par un vrai widget, pas
+    une balise HTML : d'où ce montage (visuel en HTML, clic géré par un
+    st.button invisible superposé au même endroit).
+
+    page : chemin de la page cible relatif au fichier d'entrée de l'app
+    (ex. "pages/2_Players.py").
+    query_params : dict transmis à st.switch_page (mêmes clés que celles
+    lues par st.query_params.get(...) sur la page cible).
+    cle : identifiant unique sur TOUTE la page Streamlit affichée (pas
+    seulement dans la liste en cours) — combiner contexte d'appel et
+    identifiant de la ligne (ex. f"{prefixe_cle}_r{rang}_{player_id}").
+    """
+    st.html(
+        f'<style>.st-key-{cle} {{ position: relative; }} '
+        f'.st-key-{cle} button {{ position: absolute; inset: 0; width: 100%; '
+        f'height: 100%; min-height: unset; opacity: 0; cursor: pointer; z-index: 5; }}</style>'
+    )
+    with st.container(key=cle):
+        st.markdown(_aplatir_html(html_visuel), unsafe_allow_html=True)
+        if st.button(" ", key=f"{cle}__bouton"):
+            st.switch_page(page, query_params=query_params)
+
 # Traduction des noms de colonnes techniques vers un affichage lisible en
 # français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
 
@@ -2028,19 +2060,21 @@ def render_table(styled_df):
     html = styled_df.to_html()
     st.markdown(_aplatir_html(f'<div style="overflow-x:auto;">{html}</div>'), unsafe_allow_html=True)
 
-def render_podium(df, metric_col, decimals=3, season=None):
+def render_podium(df, metric_col, decimals=3, season=None, prefixe_cle="podium"):
     """Podium HTML pour un top 3 de joueurs : 1er au centre (plus haut), 2e à
     gauche, 3e à droite. Utilise photo_url si présente dans df, sinon un avatar
     avec les initiales du joueur, coloré aux couleurs de l'équipe.
 
-    season : saison à laquelle appartiennent ces données, transmise au lien
-    joueur pour que la page Players se présélectionne sur la bonne saison.
+    season : saison à laquelle appartiennent ces données, transmise à la page
+    Players au clic pour qu'elle se présélectionne sur la bonne saison.
 
-    Rendu via st.markdown (et non st.iframe) : les liens vers Teams/Players
-    nécessitent de sortir du cadre principal, ce que le sandbox par défaut
-    de st.iframe interdit (pas de allow-top-navigation). st.markdown place
-    ce HTML directement dans la page, donc les liens fonctionnent et la
-    police est héritée de PAGE_FONT_CSS sans avoir à la réimporter ici.
+    prefixe_cle : identifiant unique de cet appel sur la page (plusieurs
+    podiums peuvent être affichés sur une même page — ex. QB/RB/WR — chacun
+    a besoin de clés de widget distinctes).
+
+    Chaque entrée est un st.container() distinct (via st.columns pour les
+    aligner côte à côte) plutôt qu'un unique bloc HTML : c'est ce qui permet
+    à _carte_cliquable d'y superposer un vrai bouton Streamlit par carte.
     """
     if df.empty:
         st.info("Aucune donnée disponible.")
@@ -2052,9 +2086,9 @@ def render_podium(df, metric_col, decimals=3, season=None):
     couleurs_rang = ["#FBBF24", "#CBD5E1", "#D97706"]
     hauteurs = [130, 100, 80]
     ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
+    colonnes = st.columns(len(ordre_affichage))
 
-    blocs = ""
-    for i in ordre_affichage:
+    for col, i in zip(colonnes, ordre_affichage):
         if i >= len(df):
             continue
         row = df.iloc[i]
@@ -2079,7 +2113,7 @@ def render_podium(df, metric_col, decimals=3, season=None):
                 f'<div style="width:70px;height:70px;border-radius:50%;background:{couleur_equipe};'
                 f'display:flex;align-items:center;justify-content:center;color:white;'
                 f'font-weight:700;font-size:22px;border:3px solid {couleur_equipe};'
-                f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">{initiales}</div>'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.3);margin:0 auto;">{initiales}</div>'
             )
 
         logo_html = (
@@ -2087,41 +2121,39 @@ def render_podium(df, metric_col, decimals=3, season=None):
             if logo_url else ""
         )
 
-        avatar_lien = _lien_joueur(avatar, player_id, season)
-        nom_lien = _lien_joueur(
-            f'<div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>',
-            player_id, season,
-        )
-        equipe_lien = _lien_equipe(f'{logo_html}{team}', team)
-
-        blocs += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
+        carte_html = f"""
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+                    font-family:'Manrope','Segoe UI',sans-serif;">
             <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
                         display:flex;align-items:center;justify-content:center;color:#1F2937;
                         font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
-            {avatar_lien}
-            {nom_lien}
-            <div style="font-size:12px;color:#64748B;">{equipe_lien}</div>
-            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
+            {avatar}
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{nom}</div>
+            <div style="font-size:12px;color:#64748B;text-align:center;">{logo_html}{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;text-align:center;">{valeur:,.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
                         border-radius:8px 8px 0 0;margin-top:10px;"></div>
         </div>
         """
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="display:flex;align-items:flex-end;justify-content:center;'
-            f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+        with col:
+            if player_id:
+                qp = {"player": player_id}
+                if season:
+                    qp["season"] = str(season)
+                _carte_cliquable(carte_html, "pages/2_Players.py", qp, f"{prefixe_cle}_r{rang}_{player_id}")
+            else:
+                st.markdown(_aplatir_html(carte_html), unsafe_allow_html=True)
 
-def render_team_podium(df, metric_col, decimals=0):
+def render_team_podium(df, metric_col, decimals=0, prefixe_cle="team_podium"):
     """Podium HTML pour un top 3 d'équipes (pas de joueur individuel) :
     logo d'équipe en grand format au centre de l'avatar, nom de l'équipe
     en dessous. Même structure visuelle que render_podium, adaptée aux
-    entités équipe."""
+    entités équipe.
+
+    prefixe_cle : identifiant unique de cet appel sur la page (voir
+    render_podium)."""
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
@@ -2132,9 +2164,9 @@ def render_team_podium(df, metric_col, decimals=0):
     couleurs_rang = ["#FBBF24", "#CBD5E1", "#D97706"]
     hauteurs = [130, 100, 80]
     ordre_affichage = [1, 0, 2] if len(df) >= 3 else list(range(len(df)))
+    colonnes = st.columns(len(ordre_affichage))
 
-    blocs = ""
-    for i in ordre_affichage:
+    for col, i in zip(colonnes, ordre_affichage):
         if i >= len(df):
             continue
         row = df.iloc[i]
@@ -2147,45 +2179,35 @@ def render_team_podium(df, metric_col, decimals=0):
         if logo_url:
             avatar = (
                 f'<div style="width:70px;height:70px;border-radius:50%;background:white;'
-                f'display:flex;align-items:center;justify-content:center;'
+                f'display:flex;align-items:center;justify-content:center;margin:0 auto;'
                 f'border:3px solid {couleur_equipe};box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
                 f'<img src="{logo_url}" style="width:50px;height:50px;object-fit:contain;"></div>'
             )
         else:
             avatar = (
                 f'<div style="width:70px;height:70px;border-radius:50%;background:{couleur_equipe};'
-                f'display:flex;align-items:center;justify-content:center;color:white;'
+                f'display:flex;align-items:center;justify-content:center;color:white;margin:0 auto;'
                 f'font-weight:700;font-size:18px;border:3px solid {couleur_equipe};'
                 f'box-shadow:0 2px 8px rgba(0,0,0,0.3);">{team}</div>'
             )
 
-        avatar_lien = _lien_equipe(avatar, team)
-        nom_lien = _lien_equipe(
-            f'<div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{team}</div>',
-            team,
-        )
-
-        blocs += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;margin:0 10px;width:120px;">
+        carte_html = f"""
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+                    font-family:'Manrope','Segoe UI',sans-serif;">
             <div style="width:28px;height:28px;border-radius:50%;background:{couleurs_rang[rang-1]};
                         display:flex;align-items:center;justify-content:center;color:#1F2937;
                         font-weight:800;font-size:14px;margin-bottom:8px;">{rang}</div>
-            {avatar_lien}
-            {nom_lien}
-            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;">{valeur:,.{decimals}f}</div>
+            {avatar}
+            <div style="margin-top:8px;font-weight:600;text-align:center;font-size:14px;color:#1E293B;">{team}</div>
+            <div style="margin-top:6px;font-weight:700;font-size:16px;color:#1E293B;text-align:center;">{valeur:,.{decimals}f}</div>
             <div style="width:100%;height:{hauteurs[rang-1]}px;
                         background:linear-gradient(180deg, {couleur_equipe}, {couleur_equipe}dd);
                         border-radius:8px 8px 0 0;margin-top:10px;"></div>
         </div>
         """
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="display:flex;align-items:flex-end;justify-content:center;'
-            f'padding:20px 0;font-family:\'Manrope\',\'Segoe UI\',sans-serif;">{blocs}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+        with col:
+            _carte_cliquable(carte_html, "pages/1_Teams.py", {"team": team}, f"{prefixe_cle}_r{rang}_{team}")
 
 def render_top_teams_list(df, metric_col="epa_offense", decimals=3):
     """Affiche un classement d'équipes sous forme de liste HTML compacte (logo, valeur), utilisé sur Home."""
@@ -2274,21 +2296,31 @@ def render_top_players_list(df):
         unsafe_allow_html=True,
     )
 
-def render_recent_games_list(df):
-    """Affiche les derniers matchs sous forme de liste HTML compacte (logos, score), utilisé sur Home."""
+def render_recent_games_list(df, prefixe_cle="recents"):
+    """Affiche les derniers matchs sous forme de liste HTML compacte (logos, score), utilisé sur Home.
+
+    prefixe_cle : identifiant unique de cet appel sur la page."""
     if df.empty:
         st.info("Aucun match disponible.")
         return
 
     logos = get_team_logos()
+    lignes = list(df.iterrows())
 
-    rows_html = ""
-    for _, row in df.iterrows():
+    for idx_boucle, (_, row) in enumerate(lignes):
         home_logo = logos.get(row["home_team"], "")
         away_logo = logos.get(row["away_team"], "")
         game_id = row.get("game_id") if "game_id" in df.columns else None
-        contenu_ligne = f"""
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #E2E8F0;">
+        premier, dernier = idx_boucle == 0, idx_boucle == len(lignes) - 1
+        rayon = "border-radius:12px;" if premier and dernier else (
+            "border-radius:12px 12px 0 0;" if premier else
+            "border-radius:0 0 12px 12px;" if dernier else ""
+        )
+        bordure_bas = "" if dernier else "border-bottom:1px solid #E2E8F0;"
+
+        ligne_html = f"""
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;
+                    background:#F8FAFC;{bordure_bas}{rayon}font-family:'Manrope',sans-serif;">
             <div style="font-size:12px;color:#94A3B8;width:40px;">S{int(row['week'])}</div>
             <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
                 <span style="font-weight:600;color:#1E293B;">{row['away_team']}</span>
@@ -2303,24 +2335,29 @@ def render_recent_games_list(df):
             </div>
         </div>
         """
-        rows_html += _lien_match(contenu_ligne, game_id)
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+        if game_id and not (isinstance(game_id, float) and game_id != game_id):
+            _carte_cliquable(ligne_html, "pages/3_Games.py", {"game": game_id}, f"{prefixe_cle}_{idx_boucle}_{game_id}")
+        else:
+            st.markdown(_aplatir_html(ligne_html), unsafe_allow_html=True)
 
-def render_game_performers(performers: list, couleur_equipe: str, season=None):
+def render_game_performers(performers: list, couleur_equipe: str, season=None, prefixe_cle="performers"):
     """performers : liste de (label_role, dataframe) pour une équipe.
-    season : transmis au lien joueur pour présélectionner la bonne saison
-    sur la page Players."""
-    rows_html = ""
-    for label, df in performers:
-        if df.empty:
-            continue
+    season : transmis à la page Players au clic pour présélectionner la
+    bonne saison.
+    prefixe_cle : identifiant unique de cet appel sur la page (équipe
+    domicile vs visiteuse, par exemple)."""
+    lignes = [(label, df) for label, df in performers if not df.empty]
+
+    if not lignes:
+        st.markdown(
+            '<div style="padding:14px;color:#94A3B8;font-size:13px;background:#F8FAFC;'
+            'border-radius:12px;font-family:\'Manrope\',sans-serif;">Aucune donnée disponible.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    for idx_boucle, (label, df) in enumerate(lignes):
         row = df.iloc[0]
         photo = row.get("photo_url")
         nom = row["player"]
@@ -2341,17 +2378,19 @@ def render_game_performers(performers: list, couleur_equipe: str, season=None):
                 f'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initiales}</div>'
             )
 
-        avatar = _lien_joueur(avatar, player_id, season)
-        bloc_nom = _lien_joueur(
-            f'<div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>',
-            player_id, season,
+        premier, dernier = idx_boucle == 0, idx_boucle == len(lignes) - 1
+        rayon = "border-radius:12px;" if premier and dernier else (
+            "border-radius:12px 12px 0 0;" if premier else
+            "border-radius:0 0 12px 12px;" if dernier else ""
         )
+        bordure_bas = "" if dernier else "border-bottom:1px solid #E2E8F0;"
 
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #E2E8F0;">
+        ligne_html = f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#F8FAFC;
+                    {bordure_bas}{rayon}font-family:'Manrope',sans-serif;">
             {avatar}
             <div style="flex:1;min-width:0;">
-                {bloc_nom}
+                <div style="font-weight:600;color:#1E293B;font-size:14px;">{nom}</div>
                 <div style="font-size:11px;color:#64748B;">{position} · {label}</div>
             </div>
             <div style="text-align:right;">
@@ -2361,32 +2400,31 @@ def render_game_performers(performers: list, couleur_equipe: str, season=None):
         </div>
         """
 
-    if not rows_html:
-        rows_html = '<div style="padding:14px;color:#94A3B8;font-size:13px;">Aucune donnée disponible.</div>'
+        if isinstance(player_id, str) and player_id:
+            qp = {"player": player_id}
+            if season:
+                qp["season"] = str(season)
+            _carte_cliquable(ligne_html, "pages/2_Players.py", qp, f"{prefixe_cle}_{idx_boucle}_{player_id}")
+        else:
+            st.markdown(_aplatir_html(ligne_html), unsafe_allow_html=True)
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
-
-def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, season=None):
+def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, season=None, prefixe_cle="classement"):
     """Vert = progression vs semaine précédente, rouge = recul, NEW = pas
     classé la semaine d'avant (nouveau qualifié ou retour de blessure).
 
-    season : transmis au lien joueur (quand is_player=True) pour que la page
-    Players se présélectionne sur la bonne saison."""
+    season : transmis à la page Players au clic (quand is_player=True) pour
+    qu'elle se présélectionne sur la bonne saison.
+    prefixe_cle : identifiant unique de cet appel sur la page (plusieurs
+    classements peuvent être affichés sur une même page)."""
     if df.empty:
         st.info("Aucune donnée disponible.")
         return
 
     colors = get_team_colors()
     logos = get_team_logos()
+    lignes = list(df.head(10).iterrows())
 
-    rows_html = ""
-    for _, row in df.head(10).iterrows():
+    for idx_boucle, (_, row) in enumerate(lignes):
         team = row["team"]
         couleur = colors.get(team, "#374151")
         logo = logos.get(team, "")
@@ -2404,32 +2442,35 @@ def render_ranking_with_movement(df, value_col, decimals=3, is_player=False, sea
             badge = '<span style="color:#94A3B8;font-size:12px;">–</span>'
 
         nom_affiche = f"{row['player']} · {team}" if is_player else team
-        logo_lien = _lien_equipe(f'<img src="{logo}" height="20">', team)
-        nom_div = f'<div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>'
-        if is_player:
-            nom_div = _lien_joueur(nom_div, row.get("player_id"), season)
-        else:
-            nom_div = _lien_equipe(nom_div, team)
+        premier, dernier = idx_boucle == 0, idx_boucle == len(lignes) - 1
+        rayon = "border-radius:12px;" if premier and dernier else (
+            "border-radius:12px 12px 0 0;" if premier else
+            "border-radius:0 0 12px 12px;" if dernier else ""
+        )
+        bordure_bas = "" if dernier else "border-bottom:1px solid #E2E8F0;"
 
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
+        ligne_html = f"""
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#F8FAFC;
+                    {bordure_bas}{rayon}font-family:'Manrope',sans-serif;">
             <div style="width:20px;font-weight:800;color:{couleur};font-size:14px;">{rang}</div>
-            {logo_lien}
-            {nom_div}
+            <img src="{logo}" height="20">
+            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom_affiche}</div>
             <div style="width:44px;text-align:center;">{badge}</div>
             <div style="width:60px;text-align:right;font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:13px;">{valeur:.{decimals}f}</div>
         </div>
         """
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+        if is_player and isinstance(row.get("player_id"), str) and row.get("player_id"):
+            qp = {"player": row["player_id"]}
+            if season:
+                qp["season"] = str(season)
+            _carte_cliquable(ligne_html, "pages/2_Players.py", qp, f"{prefixe_cle}_{rang}_{row['player_id']}")
+        elif not is_player:
+            _carte_cliquable(ligne_html, "pages/1_Teams.py", {"team": team}, f"{prefixe_cle}_{rang}_{team}")
+        else:
+            st.markdown(_aplatir_html(ligne_html), unsafe_allow_html=True)
 
-def render_insight_leaders(entries):
+def render_insight_leaders(entries, prefixe_cle="leaders"):
     """Affiche une liste "qui domine sur quoi" : une ligne par métrique,
     chacune montrant SON propre leader — pas un tableau classé sur une
     seule métrique. Pensé pour un coup d'œil rapide sur la page d'accueil.
@@ -2437,12 +2478,13 @@ def render_insight_leaders(entries):
     entries : liste de dicts {label, name, team (abréviation ou None),
     value (déjà formaté en string), photo_url (optionnel), player_id
     (optionnel — présent seulement quand l'entrée désigne un joueur), season
-    (optionnel — saison de l'entrée, pour présélectionner la page Players)}."""
+    (optionnel — saison de l'entrée, pour présélectionner la page Players)}.
+    prefixe_cle : identifiant unique de cet appel sur la page (league_leaders
+    vs analytics_leaders sur Home, par exemple)."""
     colors = get_team_colors()
     logos = get_team_logos()
 
-    rows_html = ""
-    for e in entries:
+    for idx_boucle, e in enumerate(entries):
         team = e.get("team")
         couleur = colors.get(team, "#374151") if team else "#374151"
         logo = logos.get(team, "") if team else ""
@@ -2461,27 +2503,29 @@ def render_insight_leaders(entries):
             avatar = '<div style="width:30px;flex-shrink:0;"></div>'
 
         nom = e.get("name") or "—"
-        nom_div = f'<div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>'
-        if player_id:
-            avatar = _lien_joueur(avatar, player_id, season)
-            nom_div = _lien_joueur(nom_div, player_id, season)
-        elif team:
-            avatar = _lien_equipe(avatar, team)
-            nom_div = _lien_equipe(nom_div, team)
+        premier, dernier = idx_boucle == 0, idx_boucle == len(entries) - 1
+        rayon = "border-radius:12px;" if premier and dernier else (
+            "border-radius:12px 12px 0 0;" if premier else
+            "border-radius:0 0 12px 12px;" if dernier else ""
+        )
+        bordure_bas = "" if dernier else "border-bottom:1px solid #E2E8F0;"
 
-        rows_html += f"""
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #E2E8F0;">
+        ligne_html = f"""
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#F8FAFC;
+                    {bordure_bas}{rayon}font-family:'Manrope',sans-serif;">
             <div style="width:100px;flex-shrink:0;font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.04em;">{e['label']}</div>
             {avatar}
-            {nom_div}
+            <div style="flex:1;min-width:0;font-weight:600;color:#1E293B;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{nom}</div>
             <div style="font-weight:800;color:{couleur};font-family:'Space Mono',monospace;font-size:14px;flex-shrink:0;">{e['value']}</div>
         </div>
         """
 
-    st.markdown(
-        _aplatir_html(
-            f'<div style="background:#F8FAFC;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;'
-            f'font-family:\'Manrope\',sans-serif;">{rows_html}</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+        if isinstance(player_id, str) and player_id:
+            qp = {"player": player_id}
+            if season:
+                qp["season"] = str(season)
+            _carte_cliquable(ligne_html, "pages/2_Players.py", qp, f"{prefixe_cle}_{idx_boucle}_{player_id}")
+        elif team:
+            _carte_cliquable(ligne_html, "pages/1_Teams.py", {"team": team}, f"{prefixe_cle}_{idx_boucle}_{team}")
+        else:
+            st.markdown(_aplatir_html(ligne_html), unsafe_allow_html=True)
