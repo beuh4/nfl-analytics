@@ -1273,6 +1273,156 @@ def get_top_wr_season_epa(season: int, min_targets: int = 30):
     df = con.execute(query, [season, min_targets]).fetchdf()
     return df
 
+@st.cache_data(ttl=3600)
+def get_passing_leaderboard_season(season: int, min_attempts: int = 50):
+    """Tableau complet des passeurs de la ligue sur une saison — colonnes
+    façon site de stats NFL classique (tentatives, complétions, TD, INT,
+    passer rating, sacks encaissés...), pas un top 3. Utilisé sur
+    Analytics > Joueurs > Passe."""
+    con = get_connection()
+    query = """
+        WITH base AS (
+            SELECT
+                p.passer_player_name AS player, p.posteam AS team,
+                ANY_VALUE(p.passer_player_id) AS player_id,
+                ANY_VALUE(r.headshot_url) AS photo_url,
+                SUM(p.passing_yards) AS pass_yds,
+                COUNT(*) AS att,
+                SUM(p.complete_pass) AS cmp,
+                SUM(p.pass_touchdown) AS td,
+                SUM(p.interception) AS interceptions,
+                SUM(p.first_down_pass) AS first_downs,
+                SUM(CASE WHEN p.passing_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
+                SUM(CASE WHEN p.passing_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
+                MAX(p.passing_yards) AS lng
+            FROM plays p
+            LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+            WHERE p.season = ? AND p.pass = 1 AND p.passer_player_id IS NOT NULL
+            GROUP BY p.passer_player_name, p.posteam
+            HAVING COUNT(*) >= ?
+        ),
+        sacks AS (
+            SELECT passer_player_id, COUNT(*) AS sck, SUM(-yards_gained) AS scky
+            FROM plays
+            WHERE season = ? AND sack = 1
+            GROUP BY passer_player_id
+        )
+        SELECT b.*, COALESCE(s.sck, 0) AS sck, COALESCE(s.scky, 0) AS scky
+        FROM base b
+        LEFT JOIN sacks s ON b.player_id = s.passer_player_id
+        ORDER BY b.pass_yds DESC
+    """
+    df = con.execute(query, [season, min_attempts, season]).fetchdf()
+    if df.empty:
+        return df
+
+    # Yds/Att, Cmp%, 1st% et le passer rating (formule NFL officielle à 4
+    # composantes, chacune plafonnée entre 0 et 2.375) sont dérivés ici en
+    # pandas plutôt qu'en SQL — bien plus lisible que l'équivalent en CASE/
+    # LEAST/GREATEST imbriqués.
+    df["yds_att"] = (df["pass_yds"] / df["att"]).round(1)
+    df["cmp_pct"] = (df["cmp"] / df["att"] * 100).round(1)
+    df["first_pct"] = (df["first_downs"] / df["att"] * 100).round(1)
+
+    a = (((df["cmp"] / df["att"]) - 0.3) * 5).clip(0, 2.375)
+    b = (((df["pass_yds"] / df["att"]) - 3) * 0.25).clip(0, 2.375)
+    c = ((df["td"] / df["att"]) * 20).clip(0, 2.375)
+    d = (2.375 - ((df["interceptions"] / df["att"]) * 25)).clip(0, 2.375)
+    df["rate"] = (((a + b + c + d) / 6) * 100).round(1)
+
+    df = df.rename(columns={
+        "player": "Player", "pass_yds": "Pass Yds", "yds_att": "Yds/Att", "att": "Att",
+        "cmp": "Cmp", "cmp_pct": "Cmp%", "td": "TD", "interceptions": "INT", "rate": "Rate",
+        "first_downs": "1st", "first_pct": "1st%", "twenty_plus": "20+",
+        "forty_plus": "40+", "lng": "Lng", "sck": "Sck", "scky": "SckY",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "Pass Yds", "Yds/Att", "Att", "Cmp",
+                "Cmp%", "TD", "INT", "Rate", "1st", "1st%", "20+", "40+", "Lng", "Sck", "SckY"]
+    return df[colonnes]
+
+@st.cache_data(ttl=3600)
+def get_rushing_leaderboard_season(season: int, min_attempts: int = 30):
+    """Tableau complet des coureurs de la ligue sur une saison. Utilisé sur
+    Analytics > Joueurs > Course."""
+    con = get_connection()
+    query = """
+        SELECT
+            p.rusher_player_name AS player, p.posteam AS team,
+            ANY_VALUE(p.rusher_player_id) AS player_id,
+            ANY_VALUE(r.headshot_url) AS photo_url,
+            SUM(p.rushing_yards) AS rush_yds,
+            COUNT(*) AS att,
+            SUM(p.rush_touchdown) AS td,
+            SUM(CASE WHEN p.rushing_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
+            SUM(CASE WHEN p.rushing_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
+            MAX(p.rushing_yards) AS lng,
+            SUM(p.first_down_rush) AS first_downs,
+            SUM(p.fumble) AS fum
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.rush = 1 AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY rush_yds DESC
+    """
+    df = con.execute(query, [season, min_attempts]).fetchdf()
+    if df.empty:
+        return df
+
+    df["first_pct"] = (df["first_downs"] / df["att"] * 100).round(1)
+    df = df.rename(columns={
+        "player": "Player", "rush_yds": "Rush Yds", "att": "Att", "td": "TD",
+        "twenty_plus": "20+", "forty_plus": "40+", "lng": "Lng",
+        "first_downs": "Rush 1st", "first_pct": "Rush 1st%", "fum": "Rush FUM",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "Rush Yds", "Att", "TD", "20+",
+                "40+", "Lng", "Rush 1st", "Rush 1st%", "Rush FUM"]
+    return df[colonnes]
+
+@st.cache_data(ttl=3600)
+def get_receiving_leaderboard_season(season: int, min_targets: int = 20):
+    """Tableau complet des receveurs de la ligue sur une saison. Utilisé sur
+    Analytics > Joueurs > Réception."""
+    con = get_connection()
+    query = """
+        SELECT
+            p.receiver_player_name AS player, p.posteam AS team,
+            ANY_VALUE(p.receiver_player_id) AS player_id,
+            ANY_VALUE(r.headshot_url) AS photo_url,
+            SUM(p.complete_pass) AS rec,
+            SUM(p.receiving_yards) AS yds,
+            SUM(p.pass_touchdown) AS td,
+            SUM(CASE WHEN p.receiving_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
+            SUM(CASE WHEN p.receiving_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
+            MAX(p.receiving_yards) AS lng,
+            SUM(p.first_down_pass) AS first_downs,
+            SUM(CASE WHEN p.complete_pass = 1 THEN p.fumble ELSE 0 END) AS fum,
+            SUM(CASE WHEN p.complete_pass = 1 THEN p.yards_after_catch ELSE 0 END) AS yac_total,
+            COUNT(*) AS tgts
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.pass = 1 AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) >= ?
+        ORDER BY yds DESC
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    if df.empty:
+        return df
+
+    rec_sans_zero = df["rec"].replace(0, pd.NA)
+    df["first_pct"] = (df["first_downs"] / rec_sans_zero * 100).round(1)
+    df["yac_r"] = (df["yac_total"] / rec_sans_zero).round(1)
+    df = df.rename(columns={
+        "player": "Player", "rec": "Rec", "yds": "Yds", "td": "TD",
+        "twenty_plus": "20+", "forty_plus": "40+", "lng": "LNG",
+        "first_downs": "Rec 1st", "first_pct": "1st%", "fum": "Rec FUM",
+        "yac_r": "Rec YAC/R", "tgts": "Tgts",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "Rec", "Yds", "TD", "20+", "40+",
+                "LNG", "Rec 1st", "1st%", "Rec FUM", "Rec YAC/R", "Tgts"]
+    return df[colonnes]
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLASSEMENTS HEBDOMADAIRES (Rankings > onglet Semaine)
@@ -1978,7 +2128,8 @@ def style_dataframe(df, team_col="team", decimals=3, couleur_unique=None,
             return contenu
 
         affichage[player_col] = affichage.apply(_cell_avec_photo, axis=1)
-        affichage = affichage.drop(columns=["photo_url"])
+        colonnes_techniques = [c for c in ("photo_url", "player_id") if c in affichage.columns]
+        affichage = affichage.drop(columns=colonnes_techniques)
 
     affichage = affichage.rename(columns=TRADUCTIONS_COLONNES)
     format_dict = {TRADUCTIONS_COLONNES.get(col, col): f"{{:.{decimals}f}}" for col in numeric_cols}
@@ -2035,12 +2186,6 @@ def render_podium(df, metric_col, decimals=3, season=None):
 
     season : saison à laquelle appartiennent ces données, transmise au lien
     joueur pour que la page Players se présélectionne sur la bonne saison.
-
-    Rendu via st.markdown (et non st.iframe) : les liens vers Teams/Players
-    nécessitent de sortir du cadre principal, ce que le sandbox par défaut
-    de st.iframe interdit (pas de allow-top-navigation). st.markdown place
-    ce HTML directement dans la page, donc les liens fonctionnent et la
-    police est héritée de PAGE_FONT_CSS sans avoir à la réimporter ici.
     """
     if df.empty:
         st.info("Aucune donnée disponible.")
