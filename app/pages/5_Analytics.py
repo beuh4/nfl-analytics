@@ -29,6 +29,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+tab_team, tab_players = st.tabs(["Équipe", "Joueurs"])
+
 
 # ==========================
 # CONFIG GRAPHIQUE
@@ -254,7 +256,7 @@ def build_team_chart(df):
 # PLAYERS TAB
 # ==========================
 
-with onglet_joueurs:
+with tab_onglet_joueurs:
 
     pass_tab, rush_tab, rec_tab = st.tabs(
         [
