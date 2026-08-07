@@ -1289,9 +1289,9 @@ def get_passing_leaderboard_season(season: int, min_attempts: int = 50):
                 SUM(p.passing_yards) AS pass_yds,
                 COUNT(*) AS att,
                 SUM(p.complete_pass) AS cmp,
-                SUM(p.pass_touchdown) AS td,
+                SUM(p.touchdown) AS td,
                 SUM(p.interception) AS interceptions,
-                SUM(p.first_down_pass) AS first_downs,
+                SUM(p.first_down) AS first_downs,
                 SUM(CASE WHEN p.passing_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
                 SUM(CASE WHEN p.passing_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
                 MAX(p.passing_yards) AS lng
@@ -1352,11 +1352,11 @@ def get_rushing_leaderboard_season(season: int, min_attempts: int = 30):
             ANY_VALUE(r.headshot_url) AS photo_url,
             SUM(p.rushing_yards) AS rush_yds,
             COUNT(*) AS att,
-            SUM(p.rush_touchdown) AS td,
+            SUM(p.touchdown) AS td,
             SUM(CASE WHEN p.rushing_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
             SUM(CASE WHEN p.rushing_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
             MAX(p.rushing_yards) AS lng,
-            SUM(p.first_down_rush) AS first_downs,
+            SUM(p.first_down) AS first_downs,
             SUM(p.fumble) AS fum
         FROM plays p
         LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
@@ -1391,11 +1391,11 @@ def get_receiving_leaderboard_season(season: int, min_targets: int = 20):
             ANY_VALUE(r.headshot_url) AS photo_url,
             SUM(p.complete_pass) AS rec,
             SUM(p.receiving_yards) AS yds,
-            SUM(p.pass_touchdown) AS td,
+            SUM(p.touchdown) AS td,
             SUM(CASE WHEN p.receiving_yards >= 20 THEN 1 ELSE 0 END) AS twenty_plus,
             SUM(CASE WHEN p.receiving_yards >= 40 THEN 1 ELSE 0 END) AS forty_plus,
             MAX(p.receiving_yards) AS lng,
-            SUM(p.first_down_pass) AS first_downs,
+            SUM(p.first_down) AS first_downs,
             SUM(CASE WHEN p.complete_pass = 1 THEN p.fumble ELSE 0 END) AS fum,
             SUM(CASE WHEN p.complete_pass = 1 THEN p.yards_after_catch ELSE 0 END) AS yac_total,
             COUNT(*) AS tgts
