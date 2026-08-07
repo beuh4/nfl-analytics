@@ -251,112 +251,176 @@ def build_team_chart(df):
 
 
 # ==========================
-# PLAYER TABLE
+# PLAYERS TAB
 # ==========================
 
+with tab_players:
 
-def _config_entier(label):
-
-    return st.column_config.NumberColumn(
-        label,
-        format="%d"
-    )
-
-
-def _config_decimal(label):
-
-    return st.column_config.NumberColumn(
-        label,
-        format="%.1f"
-    )
-
-
-def _afficher_leaderboard(
-    df,
-    colonnes_entieres,
-    colonnes_decimales
-):
-
-    config = {
-
-        "photo_url":
-            st.column_config.ImageColumn(
-                " ",
-                width="small"
-            ),
-
-        "Player":
-            st.column_config.TextColumn(
-                "Player",
-                width="medium"
-            ),
-
-        "team":
-            st.column_config.TextColumn(
-                "Équipe",
-                width="small"
-            ),
-    }
-
-
-    for col in colonnes_entieres:
-        config[col] = _config_entier(col)
-
-
-    for col in colonnes_decimales:
-        config[col] = _config_decimal(col)
-
-
-    ordre = [
-        "photo_url",
-        "Player",
-        "team"
-    ] + [
-        c for c in df.columns
-        if c not in [
-            "player_id",
-            "photo_url",
-            "Player",
-            "team"
+    pass_tab, rush_tab, rec_tab = st.tabs(
+        [
+            "Passe",
+            "Course",
+            "Réception"
         ]
-    ]
-
-
-    st.dataframe(
-        df,
-        column_config=config,
-        column_order=ordre,
-        hide_index=True,
-        use_container_width=True,
-        height=650,
     )
 
 
+    # ==========================
+    # PASSE
+    # ==========================
 
-# ==========================
-# PAGE
-# ==========================
+    with pass_tab:
 
+        st.subheader("Passeurs — saison complète")
 
-st.title("Analytics")
-
-
-seasons = get_available_seasons()
-
-season = st.selectbox(
-    "Saison",
-    seasons,
-    index=len(seasons)-1
-)
+        min_pass = st.number_input(
+            "Tentatives de passe minimum",
+            min_value=0,
+            value=100,
+            step=25,
+        )
 
 
-tab_team, tab_players = st.tabs(
-    [
-        "Équipe",
-        "Joueurs"
-    ]
-)
+        df_pass = get_passing_leaderboard_season(
+            season
+        )
 
+
+        df_pass = df_pass[
+            df_pass["Att"] >= min_pass
+        ]
+
+
+        if df_pass.empty:
+            st.info(
+                "Aucune donnée disponible avec ce filtre."
+            )
+        else:
+            _afficher_leaderboard(
+                df_pass,
+                [
+                    "Pass Yds",
+                    "Att",
+                    "Cmp",
+                    "TD",
+                    "INT",
+                    "1st",
+                    "20+",
+                    "40+",
+                    "Lng",
+                    "Sck",
+                    "SckY",
+                ],
+                [
+                    "Yds/Att",
+                    "Cmp%",
+                    "Rate",
+                    "1st%",
+                ]
+            )
+
+
+    # ==========================
+    # COURSE
+    # ==========================
+
+    with rush_tab:
+
+        st.subheader("Coureurs — saison complète")
+
+
+        min_rush = st.number_input(
+            "Tentatives de course minimum",
+            min_value=0,
+            value=50,
+            step=10,
+        )
+
+
+        df_rush = get_rushing_leaderboard_season(
+            season
+        )
+
+
+        df_rush = df_rush[
+            df_rush["Att"] >= min_rush
+        ]
+
+
+        if df_rush.empty:
+            st.info(
+                "Aucune donnée disponible avec ce filtre."
+            )
+        else:
+            _afficher_leaderboard(
+                df_rush,
+                [
+                    "Rush Yds",
+                    "Att",
+                    "TD",
+                    "20+",
+                    "40+",
+                    "Lng",
+                    "Rush 1st",
+                    "Rush FUM",
+                ],
+                [
+                    "Rush 1st%",
+                ]
+            )
+
+
+
+    # ==========================
+    # RECEPTION
+    # ==========================
+
+    with rec_tab:
+
+        st.subheader("Receveurs — saison complète")
+
+
+        min_targets = st.number_input(
+            "Réceptions ciblées minimum",
+            min_value=0,
+            value=40,
+            step=10,
+        )
+
+
+        df_rec = get_receiving_leaderboard_season(
+            season
+        )
+
+
+        df_rec = df_rec[
+            df_rec["Tgts"] >= min_targets
+        ]
+
+
+        if df_rec.empty:
+            st.info(
+                "Aucune donnée disponible avec ce filtre."
+            )
+        else:
+            _afficher_leaderboard(
+                df_rec,
+                [
+                    "Rec",
+                    "Yds",
+                    "TD",
+                    "20+",
+                    "40+",
+                    "LNG",
+                    "Rec 1st",
+                    "Rec FUM",
+                    "Tgts",
+                ],
+                [
+                    "1st%",
+                    "Rec YAC/R",
+                ]
+            )
 
 
 # ==========================
