@@ -1423,6 +1423,113 @@ def get_receiving_leaderboard_season(season: int, min_targets: int = 20):
                 "LNG", "Rec 1st", "1st%", "Rec FUM", "Rec YAC/R", "Tgts"]
     return df[colonnes]
 
+@st.cache_data(ttl=3600)
+def get_passing_leaderboard_epa_season(season: int, min_dropbacks: int = 100):
+    """Version EPA du leaderboard passeurs — mêmes joueurs que
+    get_passing_leaderboard_season, mais colonnes EPA/dropback, CPOE, air
+    yards et pression subie plutôt que yards/TD/rate. Généralisation à toute
+    la ligue de get_player_passing_season + get_player_pressure_season.
+    Utilisé sur Analytics > Advanced Analytics PRO > Joueurs > Passe."""
+    con = get_connection()
+    query = """
+        SELECT
+            p.passer_player_name AS player, p.posteam AS team,
+            ANY_VALUE(p.passer_player_id) AS player_id,
+            ANY_VALUE(r.headshot_url) AS photo_url,
+            COUNT(*) FILTER (WHERE p.qb_dropback = 1) AS dropbacks,
+            ROUND(AVG(p.epa) FILTER (WHERE p.qb_dropback = 1), 3) AS epa_per_play,
+            ROUND(AVG(p.cpoe) FILTER (WHERE p.pass = 1), 1) AS cpoe,
+            ROUND(AVG(p.air_yards) FILTER (WHERE p.pass = 1), 1) AS air_yards_moy,
+            SUM(COALESCE(CAST(p.was_pressure AS DOUBLE), 0)) FILTER (WHERE p.qb_dropback = 1) AS pressions_subies,
+            SUM(CAST(p.sack AS DOUBLE)) AS sacks_subis
+        FROM plays p
+        LEFT JOIN rosters r ON p.passer_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.passer_player_id IS NOT NULL
+        GROUP BY p.passer_player_name, p.posteam
+        HAVING COUNT(*) FILTER (WHERE p.qb_dropback = 1) >= ?
+        ORDER BY epa_per_play DESC
+    """
+    df = con.execute(query, [season, min_dropbacks]).fetchdf()
+    if df.empty:
+        return df
+
+    df["taux_pression"] = (df["pressions_subies"] / df["dropbacks"]).round(3)
+    df = df.rename(columns={
+        "player": "Player", "dropbacks": "Dropbacks", "epa_per_play": "EPA/Dropback",
+        "cpoe": "CPOE", "air_yards_moy": "Air Yds Moy.", "pressions_subies": "Pressions subies",
+        "taux_pression": "Taux pression", "sacks_subis": "Sacks subis",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Dropback", "CPOE",
+                "Air Yds Moy.", "Dropbacks", "Pressions subies", "Taux pression", "Sacks subis"]
+    return df[colonnes]
+
+@st.cache_data(ttl=3600)
+def get_rushing_leaderboard_epa_season(season: int, min_attempts: int = 30):
+    """Version EPA du leaderboard coureurs. Généralisation à toute la ligue
+    de get_player_rushing_season. Utilisé sur Analytics > Advanced Analytics
+    PRO > Joueurs > Course."""
+    con = get_connection()
+    query = """
+        SELECT
+            p.rusher_player_name AS player, p.posteam AS team,
+            ANY_VALUE(p.rusher_player_id) AS player_id,
+            ANY_VALUE(r.headshot_url) AS photo_url,
+            COUNT(*) FILTER (WHERE p.rush = 1) AS courses,
+            SUM(p.rushing_yards) AS yards,
+            ROUND(AVG(p.epa) FILTER (WHERE p.rush = 1), 3) AS epa_per_play
+        FROM plays p
+        LEFT JOIN rosters r ON p.rusher_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.rusher_player_id IS NOT NULL
+        GROUP BY p.rusher_player_name, p.posteam
+        HAVING COUNT(*) FILTER (WHERE p.rush = 1) >= ?
+        ORDER BY epa_per_play DESC
+    """
+    df = con.execute(query, [season, min_attempts]).fetchdf()
+    if df.empty:
+        return df
+
+    df = df.rename(columns={
+        "player": "Player", "courses": "Att", "yards": "Rush Yds", "epa_per_play": "EPA/Course",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Course", "Att", "Rush Yds"]
+    return df[colonnes]
+
+@st.cache_data(ttl=3600)
+def get_receiving_leaderboard_epa_season(season: int, min_targets: int = 20):
+    """Version EPA du leaderboard receveurs. Généralisation à toute la ligue
+    de get_player_receiving_season. Utilisé sur Analytics > Advanced
+    Analytics PRO > Joueurs > Réception."""
+    con = get_connection()
+    query = """
+        SELECT
+            p.receiver_player_name AS player, p.posteam AS team,
+            ANY_VALUE(p.receiver_player_id) AS player_id,
+            ANY_VALUE(r.headshot_url) AS photo_url,
+            COUNT(*) FILTER (WHERE p.pass = 1) AS cibles,
+            COUNT(*) FILTER (WHERE p.complete_pass = 1) AS receptions,
+            SUM(p.receiving_yards) AS yards,
+            ROUND(AVG(p.epa) FILTER (WHERE p.pass = 1), 3) AS epa_per_play,
+            ROUND(AVG(p.air_yards) FILTER (WHERE p.pass = 1), 1) AS air_yards_moy,
+            ROUND(AVG(p.yards_after_catch) FILTER (WHERE p.complete_pass = 1), 1) AS yac_moy
+        FROM plays p
+        LEFT JOIN rosters r ON p.receiver_player_id = r.player_id AND r.season = p.season
+        WHERE p.season = ? AND p.receiver_player_id IS NOT NULL
+        GROUP BY p.receiver_player_name, p.posteam
+        HAVING COUNT(*) FILTER (WHERE p.pass = 1) >= ?
+        ORDER BY epa_per_play DESC
+    """
+    df = con.execute(query, [season, min_targets]).fetchdf()
+    if df.empty:
+        return df
+
+    df = df.rename(columns={
+        "player": "Player", "cibles": "Tgts", "receptions": "Rec", "yards": "Yds",
+        "epa_per_play": "EPA/Cible", "air_yards_moy": "Air Yds Moy.", "yac_moy": "YAC Moy.",
+    })
+    colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Cible", "Air Yds Moy.",
+                "YAC Moy.", "Tgts", "Rec", "Yds"]
+    return df[colonnes]
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLASSEMENTS HEBDOMADAIRES (Rankings > onglet Semaine)
