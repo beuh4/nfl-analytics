@@ -256,7 +256,7 @@ def build_team_chart(df):
 # PLAYERS TAB
 # ==========================
 
-with tab_onglet_joueurs:
+with tab_players:
 
     pass_tab, rush_tab, rec_tab = st.tabs(
         [
