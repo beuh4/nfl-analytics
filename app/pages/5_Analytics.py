@@ -171,4 +171,4 @@ with onglet_joueurs:
                 df_rec,
                 colonnes_entieres=["Rec", "Yds", "TD", "20+", "40+", "LNG", "Rec 1st", "Rec FUM", "Tgts"],
                 colonnes_decimales=["1st%", "Rec YAC/R"],
-            ))
+            )
