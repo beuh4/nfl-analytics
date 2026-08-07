@@ -105,6 +105,35 @@ with onglet_equipe:
 
     render_table(style_dataframe(df.drop(columns=["logo_url"])))
 
+def _config_entier(label):
+    return st.column_config.NumberColumn(label, format="%d")
+
+def _config_decimal(label):
+    return st.column_config.NumberColumn(label, format="%.1f")
+
+def _afficher_leaderboard(df, colonnes_entieres, colonnes_decimales):
+    """Affiche un tableau de stats joueurs via st.dataframe (natif) plutôt
+    que render_table/style_dataframe : tri au clic sur l'en-tête intégré
+    d'origine, et les noms/colonnes ne débordent plus du tableau — deux
+    limites propres au rendu HTML brut utilisé ailleurs dans l'app."""
+    config = {
+        "photo_url": st.column_config.ImageColumn(" ", width="small"),
+        "Player": st.column_config.TextColumn("Player", width="medium"),
+        "team": st.column_config.TextColumn("Équipe", width="small"),
+    }
+    for col in colonnes_entieres:
+        config[col] = _config_entier(col)
+    for col in colonnes_decimales:
+        config[col] = _config_decimal(col)
+
+    colonnes_visibles = ["photo_url", "Player", "team"] + [
+        c for c in df.columns if c not in ("player_id", "photo_url", "Player", "team")
+    ]
+    st.dataframe(
+        df, column_config=config, column_order=colonnes_visibles,
+        hide_index=True, use_container_width=True, height=600,
+    )
+
 with onglet_joueurs:
     onglet_passe, onglet_course, onglet_reception = st.tabs(["Passe", "Course", "Réception"])
 
@@ -114,10 +143,11 @@ with onglet_joueurs:
         if df_pass.empty:
             st.info("Aucune donnée disponible pour cette saison.")
         else:
-            render_table(style_dataframe(
-                df_pass, player_col="Player", couleur_unique="#FFFFFF", decimals=1,
-                integer_cols=["Pass Yds", "Att", "Cmp", "TD", "INT", "1st", "20+", "40+", "Lng", "Sck", "SckY"],
-            ))
+            _afficher_leaderboard(
+                df_pass,
+                colonnes_entieres=["Pass Yds", "Att", "Cmp", "TD", "INT", "1st", "20+", "40+", "Lng", "Sck", "SckY"],
+                colonnes_decimales=["Yds/Att", "Cmp%", "Rate", "1st%"],
+            )
 
     with onglet_course:
         st.subheader("Coureurs — saison complète")
@@ -125,10 +155,11 @@ with onglet_joueurs:
         if df_rush.empty:
             st.info("Aucune donnée disponible pour cette saison.")
         else:
-            render_table(style_dataframe(
-                df_rush, player_col="Player", couleur_unique="#FFFFFF", decimals=1,
-                integer_cols=["Rush Yds", "Att", "TD", "20+", "40+", "Lng", "Rush 1st", "Rush FUM"],
-            ))
+            _afficher_leaderboard(
+                df_rush,
+                colonnes_entieres=["Rush Yds", "Att", "TD", "20+", "40+", "Lng", "Rush 1st", "Rush FUM"],
+                colonnes_decimales=["Rush 1st%"],
+            )
 
     with onglet_reception:
         st.subheader("Receveurs — saison complète")
@@ -136,7 +167,8 @@ with onglet_joueurs:
         if df_rec.empty:
             st.info("Aucune donnée disponible pour cette saison.")
         else:
-            render_table(style_dataframe(
-                df_rec, player_col="Player", couleur_unique="#FFFFFF", decimals=1,
-                integer_cols=["Rec", "Yds", "TD", "20+", "40+", "LNG", "Rec 1st", "Rec FUM", "Tgts"],
+            _afficher_leaderboard(
+                df_rec,
+                colonnes_entieres=["Rec", "Yds", "TD", "20+", "40+", "LNG", "Rec 1st", "Rec FUM", "Tgts"],
+                colonnes_decimales=["1st%", "Rec YAC/R"],
             ))
