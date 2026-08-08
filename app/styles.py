@@ -4,7 +4,7 @@ Feuilles de style partagées, séparées du code Python des pages.
 HOME_CSS ne contient aucune valeur dynamique (pas d'interpolation) —
 c'est un bloc statique, donc une simple chaîne plutôt qu'un f-string.
 Les valeurs de statistiques (stats['total_plays'], etc.) restent
-injectées directement dans Home.py, à l'endroit où le HTML du hero est
+injectées directement dans Accueil.py, à l'endroit où le HTML du hero est
 construit, puisqu'elles dépendent des données chargées à l'exécution.
 """
 
