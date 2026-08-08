@@ -35,7 +35,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 .stat-value { font-family: 'Space Mono', monospace; font-size: 17px; font-weight: 700; color: #EA580C; }
 .stat-label { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
 
-.nav-card-link { display: block; text-decoration: none; color: inherit; cursor: pointer; }
 .nav-card {
     background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px;
     padding: 16px 18px; height: 100%; box-sizing: border-box;
@@ -46,12 +45,17 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     box-shadow: 0 4px 14px rgba(234, 88, 12, 0.14);
 }
 .nav-card-icon { font-size: 22px; margin-bottom: 6px; }
-.nav-card-title { font-weight: 700; font-size: 15px; color: #1E293B; margin-bottom: 4px; }
-.nav-card-desc { font-size: 12.5px; color: #64748B; line-height: 1.4; margin: 0; }
+.nav-card-title { font-weight: 700; font-size: 15px; color: #1E293B !important; margin-bottom: 4px; text-decoration: none !important; }
+.nav-card-desc { font-size: 12.5px; color: #64748B !important; line-height: 1.4; margin: 0; text-decoration: none !important; }
+.nav-card-link, .nav-card-link:link, .nav-card-link:visited, .nav-card-link:hover, .nav-card-link:active {
+    display: block; cursor: pointer; text-decoration: none !important; color: inherit !important;
+}
 
-.text-link-wrap { display: inline-block; text-decoration: none; margin-top: 6px; }
-.text-link { font-size: 13px; font-weight: 600; color: #475569; transition: color 0.15s ease; }
-.text-link-wrap:hover .text-link { color: #EA580C; }
+.text-link-wrap, .text-link-wrap:link, .text-link-wrap:visited, .text-link-wrap:hover, .text-link-wrap:active {
+    display: inline-block; text-decoration: none !important; margin-top: 6px;
+}
+.text-link { font-size: 13px; font-weight: 600; color: #475569 !important; transition: color 0.15s ease; text-decoration: none !important; }
+.text-link-wrap:hover .text-link { color: #EA580C !important; }
 </style>
 """
 
