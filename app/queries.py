@@ -2156,6 +2156,26 @@ def _aplatir_html(html):
     return re.sub(r"\s+", " ", html).strip()
 
 
+def render_navigation_card(icon, title, description, slug):
+    """Carte de navigation cliquable sur toute sa surface (utilisée sur
+    Accueil), pas seulement sur un lien 'Ouvrir' au survol. Même mécanisme
+    _attrs_lien que _lien_equipe/_lien_joueur/_lien_match (stopPropagation
+    + preventDefault + window.location.href) pour rester dans le même
+    onglet. slug = nom de page sans préfixe numérique ni extension
+    (ex. 'Equipes', 'Joueurs') — pas de paramètre de requête ici, contrairement
+    aux liens vers une fiche précise, puisqu'on navigue vers la page en
+    général."""
+    contenu = (
+        f'<div class="nav-card">'
+        f'<div class="nav-card-icon">{icon}</div>'
+        f'<div class="nav-card-title">{title}</div>'
+        f'<div class="nav-card-desc">{description}</div>'
+        f'</div>'
+    )
+    html = f'<a {_attrs_lien(slug)} class="nav-card-link">{contenu}</a>'
+    st.markdown(_aplatir_html(html), unsafe_allow_html=True)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # RECHERCHE GLOBALE — barre affichée en haut de chaque page
 # ──────────────────────────────────────────────────────────────────────────────

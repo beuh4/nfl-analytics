@@ -8,7 +8,7 @@ from queries import (
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_team_epa_offense_defense,
     get_season_sacks_leader, get_season_interceptions_leader, get_season_success_rate_leader,
-    render_insight_leaders, render_global_search,
+    render_insight_leaders, render_global_search, render_navigation_card,
 )
 from styles import HOME_CSS
 
@@ -32,16 +32,6 @@ st.markdown(f"""
     <div class="stat-item"><div class="stat-value">{stats['nb_saisons']}</div><div class="stat-label">Saisons</div></div>
 </div>
 """, unsafe_allow_html=True)
-
-
-def display_navigation_card(icon: str, title: str, description: str, page_path: str) -> None:
-    """Affiche une carte de navigation standardisée (icône + titre + description
-    + lien). Utilisée 8 fois sur cette page — modifier le design ici suffit
-    à le changer partout, plutôt que de retoucher chaque bloc individuellement."""
-    with st.container(border=True):
-        st.subheader(f"{icon} {title}")
-        st.write(description)
-        st.page_link(page_path, label="Ouvrir", icon="➡️")
 
 
 # ─── Aperçu de la saison — insights, pas des tableaux ───
@@ -120,56 +110,56 @@ st.divider()
 # ─── Navigation principale ───
 col1, col2, col3 = st.columns(3)
 with col1:
-    display_navigation_card(
+    render_navigation_card(
         "🏈", "Equipes",
         "Fiche complète par équipe : bilan, EPA, classement ligue, leaders, calendrier.",
-        "pages/1_Equipes.py",
+        "Equipes",
     )
 with col2:
-    display_navigation_card(
+    render_navigation_card(
         "👤", "Joueurs",
         "Fiche joueur : bio, statistiques passing/rushing/receiving, EPA, pression, tendance.",
-        "pages/2_Joueurs.py",
+        "Joueurs",
     )
 with col3:
-    display_navigation_card(
+    render_navigation_card(
         "🏟️", "Matchs",
         "Détail d'un match : score, drives, win probability, play-by-play.",
-        "pages/3_Matchs.py",
+        "Matchs",
     )
 
 col4, col5, col6 = st.columns(3)
 with col4:
-    display_navigation_card(
+    render_navigation_card(
         "🏆", "Classements",
         "Meilleurs joueurs et équipes, semaine par semaine ou saison entière.",
-        "pages/4_Classements.py",
+        "Classements",
     )
 with col5:
-    display_navigation_card(
+    render_navigation_card(
         "📊", "Analytics",
         "EPA offensif vs défensif, toutes les équipes de la ligue en un coup d'œil.",
-        "pages/5_Analytics.py",
+        "Analytics",
     )
 with col6:
-    display_navigation_card(
+    render_navigation_card(
         "⚖️", "Comparer",
         "Compare plusieurs équipes sur plusieurs années, offense ou défense.",
-        "pages/6_Comparer.py",
+        "Comparer",
     )
 
 col7, col8 = st.columns(2)
 with col7:
-    display_navigation_card(
+    render_navigation_card(
         "📸", "Cartes sociales",
         "Génère des visuels prêts pour Instagram : joueur, équipe ou podium.",
-        "pages/8_Cartes_Sociales.py",
+        "Cartes_Sociales",
     )
 with col8:
-    display_navigation_card(
+    render_navigation_card(
         "ℹ️", "A propos",
         "Source des données, méthodologie, et formulaire de retour.",
-        "pages/7_A_propos.py",
+        "A_propos",
     )
 
 st.divider()

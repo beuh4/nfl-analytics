@@ -195,7 +195,7 @@ with onglet_overview:
         df = get_passing_leaderboard_season(season)
         afficher_leaderboard(
             df[df["Att"] >= minimum],
-            colonnes_entieres=["Pass Yds", "Att", "Cmp", "TD", "INT", "1st", "20+", "40+", "Lng", "Sck", "SckY"],
+            colonnes_entieres=["Yds Passe", "Att", "Cmp", "TD", "INT", "1st", "20+", "40+", "Lng", "Sck", "SckY"],
             colonnes_decimales=["Yds/Att", "Cmp%", "Rate", "1st%"],
         )
 
@@ -205,7 +205,7 @@ with onglet_overview:
         df = get_rushing_leaderboard_season(season)
         afficher_leaderboard(
             df[df["Att"] >= minimum],
-            colonnes_entieres=["Rush Yds", "Att", "TD", "20+", "40+", "Lng", "Rush 1st", "Rush FUM"],
+            colonnes_entieres=["Yds Course", "Att", "TD", "20+", "40+", "Lng", "Rush 1st", "Rush FUM"],
             colonnes_decimales=["Rush 1st%"],
         )
 
@@ -214,8 +214,8 @@ with onglet_overview:
         minimum = filtre_reception("ov_min_reception")
         df = get_receiving_leaderboard_season(season)
         afficher_leaderboard(
-            df[df["Tgts"] >= minimum],
-            colonnes_entieres=["Rec", "Yds", "TD", "20+", "40+", "LNG", "Rec 1st", "Rec FUM", "Tgts"],
+            df[df["Cibles"] >= minimum],
+            colonnes_entieres=["Rec", "Yds", "TD", "20+", "40+", "LNG", "Rec 1st", "Rec FUM", "Cibles"],
             colonnes_decimales=["1st%", "Rec YAC/R"],
         )
 
@@ -264,7 +264,7 @@ with onglet_avance:
             df = get_rushing_leaderboard_epa_season(season)
             afficher_leaderboard(
                 df[df["Att"] >= minimum] if not df.empty else df,
-                colonnes_entieres=["Att", "Rush Yds"],
+                colonnes_entieres=["Att", "Yds Course"],
                 colonnes_decimales=["EPA/Course"],
             )
 
@@ -273,7 +273,7 @@ with onglet_avance:
             minimum = filtre_reception("pro_min_reception")
             df = get_receiving_leaderboard_epa_season(season)
             afficher_leaderboard(
-                df[df["Tgts"] >= minimum] if not df.empty else df,
-                colonnes_entieres=["Tgts", "Rec", "Yds"],
+                df[df["Cibles"] >= minimum] if not df.empty else df,
+                colonnes_entieres=["Cibles", "Rec", "Yds"],
                 colonnes_decimales=["EPA/Cible", "Air Yds Moy.", "YAC Moy."],
             )

@@ -34,6 +34,20 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 .stat-item { text-align: center; }
 .stat-value { font-family: 'Space Mono', monospace; font-size: 17px; font-weight: 700; color: #EA580C; }
 .stat-label { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
+
+.nav-card-link { display: block; text-decoration: none; color: inherit; cursor: pointer; }
+.nav-card {
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px;
+    padding: 16px 18px; height: 100%; box-sizing: border-box;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.nav-card:hover {
+    border-color: #EA580C; transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.14);
+}
+.nav-card-icon { font-size: 22px; margin-bottom: 6px; }
+.nav-card-title { font-weight: 700; font-size: 15px; color: #1E293B; margin-bottom: 4px; }
+.nav-card-desc { font-size: 12.5px; color: #64748B; line-height: 1.4; margin: 0; }
 </style>
 """
 
