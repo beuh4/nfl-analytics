@@ -14,6 +14,17 @@ HOME_CSS = """
 
 html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 
+.block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+[data-testid="stVerticalBlock"] { gap: 0.6rem; }
+hr { margin: 0.6rem 0 !important; }
+h1, h2, h3 { margin-top: 0.2rem !important; margin-bottom: 0.3rem !important; }
+
+[data-testid="stMetric"] {
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+    padding: 10px 14px !important;
+}
+[data-testid="stMetricLabel"] { font-size: 11px !important; color: #64748B !important; }
+[data-testid="stMetricValue"] { font-size: 22px !important; }
 .hero-banner {
     position: relative; overflow: hidden;
     background: linear-gradient(180deg, #0F172A 0%, #111C33 100%);
@@ -65,5 +76,17 @@ PAGE_FONT_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
 html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
+
+.block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+[data-testid="stVerticalBlock"] { gap: 0.6rem; }
+hr { margin: 0.6rem 0 !important; }
+h1, h2, h3 { margin-top: 0.2rem !important; margin-bottom: 0.3rem !important; }
+
+[data-testid="stMetric"] {
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+    padding: 10px 14px !important;
+}
+[data-testid="stMetricLabel"] { font-size: 11px !important; color: #64748B !important; }
+[data-testid="stMetricValue"] { font-size: 22px !important; }
 </style>
 """
