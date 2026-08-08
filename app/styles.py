@@ -48,6 +48,10 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 .nav-card-icon { font-size: 22px; margin-bottom: 6px; }
 .nav-card-title { font-weight: 700; font-size: 15px; color: #1E293B; margin-bottom: 4px; }
 .nav-card-desc { font-size: 12.5px; color: #64748B; line-height: 1.4; margin: 0; }
+
+.text-link-wrap { display: inline-block; text-decoration: none; margin-top: 6px; }
+.text-link { font-size: 13px; font-weight: 600; color: #475569; transition: color 0.15s ease; }
+.text-link-wrap:hover .text-link { color: #EA580C; }
 </style>
 """
 

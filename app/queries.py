@@ -2176,6 +2176,16 @@ def render_navigation_card(icon, title, description, slug):
     st.markdown(_aplatir_html(html), unsafe_allow_html=True)
 
 
+def render_page_link(icon, label, slug):
+    """Petit lien texte (icône + libellé) vers une page de l'app, stylé
+    dans la palette du site — pas le bleu souligné par défaut de
+    st.page_link. Même mécanisme _attrs_lien que le reste des liens
+    internes. slug = nom de page sans préfixe numérique ni extension."""
+    contenu = f'<span class="text-link">{icon} {label} →</span>'
+    html = f'<a {_attrs_lien(slug)} class="text-link-wrap">{contenu}</a>'
+    st.markdown(_aplatir_html(html), unsafe_allow_html=True)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # RECHERCHE GLOBALE — barre affichée en haut de chaque page
 # ──────────────────────────────────────────────────────────────────────────────

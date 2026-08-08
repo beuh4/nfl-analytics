@@ -3,11 +3,11 @@ Copie temporaire de Accueil.py.
 
 Le Main file path configuré sur Streamlit Cloud pointe encore vers
 app/Home.py. st.switch_page ne peut rediriger que vers le fichier principal
-configuré ou un fichier dans pages/ — jamais vers un fichier "libre" comme
+configuré ou un fichier dans pages/ -- jamais vers un fichier "libre" comme
 Accueil.py. Un simple stub de redirection ne fonctionne donc pas ici.
 
-Une fois le Main file path changé dans Streamlit Cloud (Settings > General
--> app/Accueil.py), ce fichier n'a plus aucune utilité : supprimer Home.py,
+Une fois le Main file path change dans Streamlit Cloud (Settings > General
+-> app/Accueil.py), ce fichier n'a plus aucune utilite : supprimer Home.py,
 tout passera par Accueil.py.
 """
 import streamlit as st
@@ -20,7 +20,7 @@ from queries import (
     get_top_qb_season_yards, get_top_rb_season_yards, get_top_wr_season_yards,
     get_top_qb_season_epa, get_team_epa_offense_defense,
     get_season_sacks_leader, get_season_interceptions_leader, get_season_success_rate_leader,
-    render_insight_leaders, render_global_search, render_navigation_card,
+    render_insight_leaders, render_global_search, render_navigation_card, render_page_link,
 )
 from styles import HOME_CSS
 
@@ -105,17 +105,17 @@ col_league, col_analytics, col_games = st.columns(3)
 with col_league:
     st.write("**Leaders de la ligue**")
     render_insight_leaders(league_leaders)
-    st.page_link("pages/4_Classements.py", label="Voir tous les classements", icon="🏆")
+    render_page_link("🏆", "Voir tous les classements", "Classements")
 
 with col_analytics:
     st.write("**Leaders Analytics** ⭐")
     render_insight_leaders(analytics_leaders)
-    st.page_link("pages/5_Analytics.py", label="Explorer les analytics", icon="📊")
+    render_page_link("📊", "Explorer les analytics", "Analytics")
 
 with col_games:
     st.write("**Derniers matchs**")
     render_recent_games_list(get_home_recent_games(home_season))
-    st.page_link("pages/1_Equipes.py", label="Explorer les équipes", icon="🏈")
+    render_page_link("🏈", "Explorer les équipes", "Equipes")
 
 st.divider()
 
