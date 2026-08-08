@@ -113,7 +113,7 @@ with col_analytics:
 with col_games:
     st.write("**Derniers matchs**")
     render_recent_games_list(get_home_recent_games(home_season))
-    st.page_link("pages/1_Équipes.py", label="Explorer les équipes", icon="🏈")
+    st.page_link("pages/1_Equipes.py", label="Explorer les équipes", icon="🏈")
 
 st.divider()
 
@@ -121,9 +121,9 @@ st.divider()
 col1, col2, col3 = st.columns(3)
 with col1:
     display_navigation_card(
-        "🏈", "Équipes",
+        "🏈", "Equipes",
         "Fiche complète par équipe : bilan, EPA, classement ligue, leaders, calendrier.",
-        "pages/1_Équipes.py",
+        "pages/1_Equipes.py",
     )
 with col2:
     display_navigation_card(
@@ -167,9 +167,9 @@ with col7:
     )
 with col8:
     display_navigation_card(
-        "ℹ️", "À propos",
+        "ℹ️", "A propos",
         "Source des données, méthodologie, et formulaire de retour.",
-        "pages/7_À_propos.py",
+        "pages/7_A_propos.py",
     )
 
 st.divider()

@@ -9,15 +9,16 @@ from queries import (
     get_team_qb_leaders, get_team_rb_leaders, get_team_wr_leaders, get_team_defensive_summary,
     get_team_qb_leaders_yards, get_team_rb_leaders_yards, get_team_wr_leaders_yards,
     get_all_teams_defensive_summary, get_team_rank_label,
-    render_podium,
+    render_podium, render_global_search,
 )
 from constants import DEFAULT_TEAM
 from styles import PAGE_FONT_CSS
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Teams", layout="wide")
+st.set_page_config(page_title="Equipes", layout="wide")
 
 st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
+render_global_search()
 
 teams_df = get_all_teams()
 team_name_to_abbr = dict(zip(teams_df["team_name"], teams_df["team_abbr"]))

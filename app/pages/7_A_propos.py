@@ -4,10 +4,12 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from styles import PAGE_FONT_CSS
+from queries import render_global_search
 
-st.set_page_config(page_title="About", layout="wide")
+st.set_page_config(page_title="A propos", layout="wide")
 st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
-st.title("About")
+render_global_search()
+st.title("A propos")
 
 st.write("""
 NFL Analytics est un projet indépendant d'exploration des statistiques NFL,

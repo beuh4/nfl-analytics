@@ -2109,12 +2109,12 @@ def _attrs_lien(href):
     )
 
 def _lien_equipe(contenu_html, abbr):
-    """Enrobe un fragment HTML d'un lien vers la fiche équipe (Équipes).
-    Le slug d'URL suit le nom du fichier de page (pages/1_Équipes.py) —
+    """Enrobe un fragment HTML d'un lien vers la fiche équipe (Equipes).
+    Le slug d'URL suit le nom du fichier de page (pages/1_Equipes.py) —
     si ce fichier est renommé, ce href doit être mis à jour en conséquence."""
     if not abbr or (isinstance(abbr, float) and abbr != abbr):
         return contenu_html
-    href = f"Équipes?team={abbr}"
+    href = f"Equipes?team={abbr}"
     return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_joueur(contenu_html, player_id, season=None):
