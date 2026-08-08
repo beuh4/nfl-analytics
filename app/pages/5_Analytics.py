@@ -9,13 +9,11 @@ from queries import (
     style_dataframe, render_table,
     get_passing_leaderboard_season, get_rushing_leaderboard_season, get_receiving_leaderboard_season,
     get_passing_leaderboard_epa_season, get_rushing_leaderboard_epa_season, get_receiving_leaderboard_epa_season,
-    render_global_search,
 )
 from styles import PAGE_FONT_CSS
 
 st.set_page_config(page_title="Analytics", layout="wide")
 st.markdown(PAGE_FONT_CSS, unsafe_allow_html=True)
-render_global_search()
 st.title("Analytics")
 
 # ═══════════════════════════════════════════════════════════════════════

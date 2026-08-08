@@ -1331,12 +1331,12 @@ def get_passing_leaderboard_season(season: int, min_attempts: int = 50):
     df["rate"] = (((a + b + c + d) / 6) * 100).round(1)
 
     df = df.rename(columns={
-        "player": "Player", "pass_yds": "Yds Passe", "yds_att": "Yds/Att", "att": "Att",
+        "player": "Player", "pass_yds": "Pass Yds", "yds_att": "Yds/Att", "att": "Att",
         "cmp": "Cmp", "cmp_pct": "Cmp%", "td": "TD", "interceptions": "INT", "rate": "Rate",
         "first_downs": "1st", "first_pct": "1st%", "twenty_plus": "20+",
         "forty_plus": "40+", "lng": "Lng", "sck": "Sck", "scky": "SckY",
     })
-    colonnes = ["player_id", "photo_url", "Player", "team", "Yds Passe", "Yds/Att", "Att", "Cmp",
+    colonnes = ["player_id", "photo_url", "Player", "team", "Pass Yds", "Yds/Att", "Att", "Cmp",
                 "Cmp%", "TD", "INT", "Rate", "1st", "1st%", "20+", "40+", "Lng", "Sck", "SckY"]
     return df[colonnes]
 
@@ -1371,11 +1371,11 @@ def get_rushing_leaderboard_season(season: int, min_attempts: int = 30):
 
     df["first_pct"] = (df["first_downs"] / df["att"] * 100).round(1)
     df = df.rename(columns={
-        "player": "Player", "rush_yds": "Yds Course", "att": "Att", "td": "TD",
+        "player": "Player", "rush_yds": "Rush Yds", "att": "Att", "td": "TD",
         "twenty_plus": "20+", "forty_plus": "40+", "lng": "Lng",
         "first_downs": "Rush 1st", "first_pct": "Rush 1st%", "fum": "Rush FUM",
     })
-    colonnes = ["player_id", "photo_url", "Player", "team", "Yds Course", "Att", "TD", "20+",
+    colonnes = ["player_id", "photo_url", "Player", "team", "Rush Yds", "Att", "TD", "20+",
                 "40+", "Lng", "Rush 1st", "Rush 1st%", "Rush FUM"]
     return df[colonnes]
 
@@ -1417,10 +1417,10 @@ def get_receiving_leaderboard_season(season: int, min_targets: int = 20):
         "player": "Player", "rec": "Rec", "yds": "Yds", "td": "TD",
         "twenty_plus": "20+", "forty_plus": "40+", "lng": "LNG",
         "first_downs": "Rec 1st", "first_pct": "1st%", "fum": "Rec FUM",
-        "yac_r": "Rec YAC/R", "tgts": "Cibles",
+        "yac_r": "Rec YAC/R", "tgts": "Tgts",
     })
     colonnes = ["player_id", "photo_url", "Player", "team", "Rec", "Yds", "TD", "20+", "40+",
-                "LNG", "Rec 1st", "1st%", "Rec FUM", "Rec YAC/R", "Cibles"]
+                "LNG", "Rec 1st", "1st%", "Rec FUM", "Rec YAC/R", "Tgts"]
     return df[colonnes]
 
 @st.cache_data(ttl=3600)
@@ -1489,9 +1489,9 @@ def get_rushing_leaderboard_epa_season(season: int, min_attempts: int = 30):
         return df
 
     df = df.rename(columns={
-        "player": "Player", "courses": "Att", "yards": "Yds Course", "epa_per_play": "EPA/Course",
+        "player": "Player", "courses": "Att", "yards": "Rush Yds", "epa_per_play": "EPA/Course",
     })
-    colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Course", "Att", "Yds Course"]
+    colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Course", "Att", "Rush Yds"]
     return df[colonnes]
 
 @st.cache_data(ttl=3600)
@@ -1523,11 +1523,11 @@ def get_receiving_leaderboard_epa_season(season: int, min_targets: int = 20):
         return df
 
     df = df.rename(columns={
-        "player": "Player", "cibles": "Cibles", "receptions": "Rec", "yards": "Yds",
+        "player": "Player", "cibles": "Tgts", "receptions": "Rec", "yards": "Yds",
         "epa_per_play": "EPA/Cible", "air_yards_moy": "Air Yds Moy.", "yac_moy": "YAC Moy.",
     })
     colonnes = ["player_id", "photo_url", "Player", "team", "EPA/Cible", "Air Yds Moy.",
-                "YAC Moy.", "Cibles", "Rec", "Yds"]
+                "YAC Moy.", "Tgts", "Rec", "Yds"]
     return df[colonnes]
 
 
@@ -2109,35 +2109,32 @@ def _attrs_lien(href):
     )
 
 def _lien_equipe(contenu_html, abbr):
-    """Enrobe un fragment HTML d'un lien vers la fiche équipe (Équipes).
-    Le slug d'URL suit le nom du fichier de page (pages/1_Équipes.py) —
-    si ce fichier est renommé, ce href doit être mis à jour en conséquence."""
+    """Enrobe un fragment HTML d'un lien vers la fiche équipe (Teams)."""
     if not abbr or (isinstance(abbr, float) and abbr != abbr):
         return contenu_html
-    href = f"Équipes?team={abbr}"
+    href = f"Teams?team={abbr}"
     return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_joueur(contenu_html, player_id, season=None):
-    """Enrobe un fragment HTML d'un lien vers la fiche joueur (Joueurs).
-    season est inclus quand disponible pour que la page Joueurs présélectionne
+    """Enrobe un fragment HTML d'un lien vers la fiche joueur (Players).
+    season est inclus quand disponible pour que la page Players présélectionne
     la bonne saison (sinon un joueur absent de la saison affichée par défaut
-    ne serait pas retrouvé). Slug d'URL lié au nom de pages/2_Joueurs.py."""
+    ne serait pas retrouvé)."""
     if not isinstance(player_id, str) or not player_id:
         return contenu_html
-    href = f"Joueurs?player={player_id}"
+    href = f"Players?player={player_id}"
     if season:
         href += f"&season={season}"
     return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _lien_match(contenu_html, game_id):
-    """Enrobe un fragment HTML d'un lien vers la fiche match (Matchs).
+    """Enrobe un fragment HTML d'un lien vers la fiche match (Games).
     game_id encode déjà saison et semaine (convention nflverse
-    'saison_semaine_visiteur_domicile'), donc la page Matchs peut s'y
-    présélectionner sans paramètre supplémentaire. Slug d'URL lié au nom
-    de pages/3_Matchs.py."""
+    'saison_semaine_visiteur_domicile'), donc la page Games peut s'y
+    présélectionner sans paramètre supplémentaire."""
     if not game_id or (isinstance(game_id, float) and game_id != game_id):
         return contenu_html
-    href = f"Matchs?game={game_id}"
+    href = f"Games?game={game_id}"
     return f'<a {_attrs_lien(href)} style="text-decoration:none;color:inherit;">{contenu_html}</a>'
 
 def _aplatir_html(html):
@@ -2154,79 +2151,6 @@ def _aplatir_html(html):
     une seule ligne élimine à la fois les lignes vides et l'indentation,
     donc le problème à la racine."""
     return re.sub(r"\s+", " ", html).strip()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# RECHERCHE GLOBALE — barre affichée en haut de chaque page
-# ──────────────────────────────────────────────────────────────────────────────
-
-@st.cache_data(ttl=3600)
-def get_global_search_index():
-    """Index plat de tous les joueurs ayant figuré à un roster, toutes
-    saisons confondues (dédupliqué par player_id, équipe/poste les plus
-    récents retenus via ARG_MAX(saison)). Contrairement à
-    get_player_search_list, aucun filtre sur les stats qualifiantes : la
-    recherche globale doit pouvoir retrouver n'importe quel joueur connu,
-    pas seulement ceux ayant produit une statistique suivie sur la saison
-    en cours."""
-    con = get_connection()
-    query = """
-        SELECT player_id, ANY_VALUE(player_name) AS nom,
-               ARG_MAX(team, season) AS team,
-               ARG_MAX(position, season) AS position,
-               MAX(season) AS derniere_saison
-        FROM rosters
-        WHERE player_name IS NOT NULL
-        GROUP BY player_id
-    """
-    df = con.execute(query).fetchdf()
-    return df
-
-
-def render_global_search():
-    """Barre de recherche équipe/joueur, appelée en haut de chaque page.
-    Un clic sur un résultat mène directement à la fiche correspondante
-    (via les mêmes liens _lien_equipe/_lien_joueur que le reste de l'app),
-    saison la plus récente du joueur présélectionnée automatiquement."""
-    requete = st.text_input(
-        "Recherche", placeholder="🔍 Rechercher une équipe ou un joueur…",
-        key="recherche_globale", label_visibility="collapsed",
-    )
-    if not requete or len(requete.strip()) < 2:
-        return
-
-    q = requete.strip().lower()
-
-    equipes = get_all_teams()
-    equipes_trouvees = equipes[
-        equipes["team_name"].str.lower().str.contains(q, na=False)
-        | equipes["team_abbr"].str.lower().str.contains(q, na=False)
-    ].head(5)
-
-    joueurs = get_global_search_index()
-    joueurs_trouves = joueurs[joueurs["nom"].str.lower().str.contains(q, na=False)].head(8)
-
-    if equipes_trouvees.empty and joueurs_trouves.empty:
-        st.caption("Aucun résultat.")
-        return
-
-    lignes = []
-    for _, row in equipes_trouvees.iterrows():
-        contenu = f'🏈 <b>{row["team_name"]}</b>'
-        lignes.append(f'<div style="padding:6px 10px;">{_lien_equipe(contenu, row["team_abbr"])}</div>')
-    for _, row in joueurs_trouves.iterrows():
-        poste = f' · {row["position"]}' if row["position"] else ""
-        equipe = row["team"] if isinstance(row["team"], str) and row["team"] else "?"
-        contenu = f'👤 <b>{row["nom"]}</b> — {equipe}{poste}'
-        saison = int(row["derniere_saison"]) if pd.notna(row["derniere_saison"]) else None
-        lignes.append(f'<div style="padding:6px 10px;">{_lien_joueur(contenu, row["player_id"], season=saison)}</div>')
-
-    html = (
-        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:4px;margin-bottom:12px;">'
-        + "".join(lignes) + "</div>"
-    )
-    st.markdown(_aplatir_html(html), unsafe_allow_html=True)
-
 
 # Traduction des noms de colonnes techniques vers un affichage lisible en
 # français. EPA reste tel quel (acronyme reconnu, pas de traduction utile).
